@@ -9,20 +9,7 @@ import io.github.kemko.grimmoryuploader.di.AppContainer
 class AuthViewModel(private val container: AppContainer) {
     private val auth: AuthRepository = container.auth
 
-    suspend fun isAuthenticated(): Boolean {
-        if (auth.validAccessToken() == null) return false
-        return try {
-            container.api.currentUser()
-            true
-        } catch (error: io.github.kemko.grimmoryuploader.data.network.ApiException) {
-            if (error.statusCode == 401) {
-                auth.logout()
-                false
-            } else {
-                throw error
-            }
-        }
-    }
+    suspend fun isAuthenticated(): Boolean = auth.isAuthenticated { container.api.currentUser() }
 
     suspend fun login(username: String, password: String): Result<TokenPair> = runCatching {
         auth.login(username, password)

@@ -34,7 +34,7 @@ class UploadQueueRepositoryTest {
     }
 
     @Test
-    fun changingServerDeletesPendingJobsAndTheirStagingFiles() {
+    fun changingServerDeletesActiveAndFailedJobsWithTheirStagingFiles() {
         runBlocking {
             val root = Files.createTempDirectory("queue-server").toFile()
             val staged = java.io.File(root, "book.fb2").apply { writeText("book") }
@@ -45,11 +45,19 @@ class UploadQueueRepositoryTest {
                 UploadSettingsSnapshot("https://example.test"),
             )
             dao.replace(dao.find(job.id)!!.copy(stagedPath = staged.absolutePath))
+            val failed = repository.enqueue(
+                IncomingInput.Url("https://example.test/failed.fb2", "failed.fb2"),
+                UploadSettingsSnapshot("https://example.test"),
+            )
+            repository.transition(failed.id, UploadJobState.QUEUED)
+            repository.transition(failed.id, UploadJobState.RUNNING)
+            repository.transition(failed.id, UploadJobState.FAILED, "invalid")
 
             repository.cancelForServer("https://example.test/")
 
             assertFalse(staged.exists())
             assertEquals(null, dao.find(job.id))
+            assertEquals(null, dao.find(failed.id))
             root.deleteRecursively()
         }
     }
@@ -74,6 +82,37 @@ class UploadQueueRepositoryTest {
             }
             root.deleteRecursively()
         }
+    }
+
+    @Test
+    fun terminalFailureClearsLocalStagingAndCannotBeRetried() = runBlocking {
+        val root = Files.createTempDirectory("queue-local-failure").toFile()
+        val staged = java.io.File(root, "local.fb2").apply { writeText("book") }
+        val dao = FakeUploadJobDao()
+        val repository = UploadQueueRepository(dao, StagingStore(root))
+        val job = repository.enqueue(
+            IncomingInput.Url("https://placeholder.test/local.fb2", "local.fb2"),
+            UploadSettingsSnapshot("https://example.test"),
+        )
+        dao.replace(
+            requireNotNull(dao.find(job.id)).copy(
+                sourceUrl = null,
+                sourceUri = "content://books/local",
+                stagedPath = staged.absolutePath,
+            ),
+        )
+        repository.transition(job.id, UploadJobState.QUEUED)
+        repository.transition(job.id, UploadJobState.RUNNING)
+
+        repository.transition(job.id, UploadJobState.FAILED, "invalid")
+
+        assertFalse(staged.exists())
+        assertEquals(null, dao.find(job.id)?.stagedPath)
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.retry(job.id) }
+        }
+        root.deleteRecursively()
+        Unit
     }
 
     @Test

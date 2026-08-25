@@ -24,9 +24,10 @@ class SettingsViewModel(private val container: AppContainer) {
         val serverChanged = old.serverUrl != null && old.serverUrl != normalizedNew
         if (serverChanged && !confirmServerChange) throw ServerChangeConfirmationRequired
         if (serverChanged) {
-            container.upload.pending()
-                .filter { it.serverUrl == old.serverUrl }
-                .forEach { container.transferScheduler.cancel(it.id) }
+            container.upload.jobsForServer(old.serverUrl).forEach {
+                container.transferScheduler.cancel(it.id)
+                container.transferNotifications.cancel(it.id)
+            }
             container.upload.cancelForServer(old.serverUrl)
         }
         container.settings.applyConfiguration(

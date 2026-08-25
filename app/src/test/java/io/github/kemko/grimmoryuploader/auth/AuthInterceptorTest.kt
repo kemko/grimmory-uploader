@@ -19,10 +19,10 @@ class AuthInterceptorTest {
     fun refreshesAndRetriesA401OnlyOnce() = runBlocking {
         val server = MockWebServer()
         server.enqueue(MockResponse().setResponseCode(401))
-        server.enqueue(MockResponse().setBody("""{"accessToken":"new","refreshToken":"r2","expiresIn":3600}"""))
+        server.enqueue(MockResponse().setBody("""{"accessToken":"new","refreshToken":"r2","expires":3600}"""))
         server.enqueue(MockResponse().setBody("""{"id":42}"""))
         server.enqueue(MockResponse().setResponseCode(401))
-        server.enqueue(MockResponse().setBody("""{"accessToken":"newer","refreshToken":"r3","expiresIn":3600}"""))
+        server.enqueue(MockResponse().setBody("""{"accessToken":"newer","refreshToken":"r3","expires":3600}"""))
         server.enqueue(MockResponse().setBody("""{"id":43}"""))
         server.start()
         try {

@@ -7,6 +7,8 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.io.InputStream
 import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -73,6 +75,36 @@ class StagingStoreTest {
         }
         assertTrue(root.listFiles().orEmpty().isEmpty())
         root.deleteRecursively()
+    }
+
+    @Test
+    fun queueStagesLocalContentOffTheCallerThread() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val root = Files.createTempDirectory("pending-dispatcher").toFile()
+        val uri = Uri.parse("content://books/threaded")
+        val readThread = AtomicReference<Thread>()
+        val bytes = "book".encodeToByteArray()
+        var index = 0
+        shadowOf(context.contentResolver).registerInputStream(
+            uri,
+            object : InputStream() {
+                override fun read(): Int {
+                    readThread.compareAndSet(null, Thread.currentThread())
+                    return if (index < bytes.size) bytes[index++].toInt() else -1
+                }
+            },
+        )
+        val repository = UploadQueueRepository(FakeUploadJobDao(), StagingStore(root))
+        val callerThread = Thread.currentThread()
+
+        repository.persist(
+            io.github.kemko.grimmoryuploader.share.IncomingInput.File(uri.toString(), "book.fb2", null),
+            context.contentResolver,
+        )
+
+        assertTrue(readThread.get() != callerThread)
+        root.deleteRecursively()
+        Unit
     }
 
 }

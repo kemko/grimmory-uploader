@@ -62,6 +62,19 @@ class AuthRepository(
     suspend fun logout() = tokenMutex.withLock { tokenStore.clear() }
     suspend fun invalidateForServerChange() = tokenMutex.withLock { tokenStore.clear() }
 
+    suspend fun isAuthenticated(currentUser: suspend () -> Unit): Boolean = try {
+        if (validAccessToken() == null) {
+            false
+        } else {
+            currentUser()
+            true
+        }
+    } catch (error: ApiException) {
+        if (error.statusCode != 401) throw error
+        logout()
+        false
+    }
+
     private suspend fun tokensFor(serverUrl: String): TokenPair? {
         val tokens = tokenStore.read() ?: return null
         if (tokens.serverUrl == serverUrl) return tokens
@@ -73,8 +86,7 @@ class AuthRepository(
         check(currentServerUrl() == serverUrl) { "Grimmory server changed during authentication" }
         val refreshToken = response.refreshToken ?: previous?.refreshToken
             ?: error("Grimmory response did not contain a refresh token")
-        val expiresAt = response.expiresAtMillis ?: response.expiresInSeconds
-            ?.let { nowMillis() + it * 1_000L }
+        val expiresAt = response.expiresInSeconds?.let { nowMillis() + it * 1_000L }
             ?: (nowMillis() + 3_600_000L)
         val tokens = TokenPair(response.accessToken, refreshToken, expiresAt, serverUrl)
         tokenStore.write(tokens)

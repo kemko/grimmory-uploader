@@ -295,7 +295,7 @@ fun HomeScreen(
                                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                             }
                         }
-                        if (job.state == UploadJobState.FAILED) TextButton(onClick = {
+                        if (job.state == UploadJobState.FAILED && job.sourceUrl != null) TextButton(onClick = {
                             requestNotificationPermission()
                             scope.launch { viewModel.retry(job) }
                         }) { Text("Retry") }
@@ -370,7 +370,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onSaved: (Boolean) -> Unit) {
         AlertDialog(
             onDismissRequest = { confirmServerChange = false },
             title = { Text("Change Grimmory server?") },
-            text = { Text("Pending transfers for the old server will be cancelled and its sign-in tokens removed.") },
+            text = { Text("Transfers for the old server will be removed with their files and sign-in tokens.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmServerChange = false

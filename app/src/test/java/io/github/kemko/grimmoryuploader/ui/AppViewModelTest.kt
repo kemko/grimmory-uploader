@@ -60,31 +60,68 @@ class AppViewModelTest {
 
     @Test
     fun incomingPreparationPersistsBeforeAuthAndSchedulesAuthenticatedInput() = runBlocking {
-        container.settings.applyConfiguration("https://grimmory.test", 2, 3, true, AuthMode.AUTO, false)
-        val viewModel = IncomingBookViewModel(container)
+        val server = MockWebServer()
+        server.start()
+        try {
+            val serverUrl = server.url("/").toString().trimEnd('/')
+            container.settings.applyConfiguration(serverUrl, 2, 3, true, AuthMode.AUTO, true)
+            val viewModel = IncomingBookViewModel(container)
 
-        val unauthenticated = viewModel.persistAndPrepare(
-            IncomingInput.Url("https://books.test/one.fb2", "one.fb2"),
-            null,
-        ).getOrThrow()
-        assertTrue(unauthenticated.requiresAuth)
-        assertEquals(UploadJobState.AWAITING_AUTH, container.upload.find(unauthenticated.job.id)?.state)
+            val unauthenticated = viewModel.persistAndPrepare(
+                IncomingInput.Url("https://books.test/one.fb2", "one.fb2"),
+                null,
+            ).getOrThrow()
+            assertTrue(unauthenticated.requiresAuth)
+            assertEquals(UploadJobState.AWAITING_AUTH, container.upload.find(unauthenticated.job.id)?.state)
 
-        container.tokenStore.write(TokenPair("access", "refresh", Long.MAX_VALUE, "https://grimmory.test"))
-        var requestedNotification = false
-        val authenticated = viewModel.persistAndPrepare(
-            IncomingInput.Url("https://books.test/two.fb2", "two.fb2"),
-            null,
-        ) { requestedNotification = true }.getOrThrow()
-        assertFalse(authenticated.requiresAuth)
-        assertTrue(requestedNotification)
-        assertEquals(UploadJobState.QUEUED, container.upload.find(authenticated.job.id)?.state)
-        assertTrue(viewModel.persist(IncomingInput.File("content://missing", "missing.fb2", null), null).isFailure)
+            container.tokenStore.write(TokenPair("access", "refresh", Long.MAX_VALUE, serverUrl))
+            server.enqueue(MockResponse().setBody("""{"id":1,"username":"reader"}"""))
+            var requestedNotification = false
+            val authenticated = viewModel.persistAndPrepare(
+                IncomingInput.Url("https://books.test/two.fb2", "two.fb2"),
+                null,
+            ) { requestedNotification = true }.getOrThrow()
+            assertFalse(authenticated.requiresAuth)
+            assertTrue(requestedNotification)
+            assertEquals(UploadJobState.QUEUED, container.upload.find(authenticated.job.id)?.state)
+            assertTrue(viewModel.persist(IncomingInput.File("content://missing", "missing.fb2", null), null).isFailure)
+        } finally {
+            server.shutdown()
+        }
         Unit
     }
 
     @Test
-    fun homeActionsAndConfirmedServerChangeUpdateOnlyActiveJobs() = runBlocking {
+    fun incomingPreparationRequiresAuthAfterRejectedRefreshAndPropagatesTransientErrors() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val serverUrl = server.url("/").toString().trimEnd('/')
+            container.settings.applyConfiguration(serverUrl, 1, 1, true, AuthMode.LOCAL, true)
+            val viewModel = IncomingBookViewModel(container)
+            val rejected = viewModel.persist(IncomingInput.Url("https://books.test/one.fb2", "one.fb2"), null)
+                .getOrThrow()
+            container.tokenStore.write(TokenPair("expired", "refresh", 0, serverUrl))
+            server.enqueue(MockResponse().setResponseCode(401))
+
+            assertTrue(viewModel.prepare(rejected.id).getOrThrow().requiresAuth)
+            assertEquals(UploadJobState.AWAITING_AUTH, container.upload.find(rejected.id)?.state)
+
+            val transient = viewModel.persist(IncomingInput.Url("https://books.test/two.fb2", "two.fb2"), null)
+                .getOrThrow()
+            container.tokenStore.write(TokenPair("expired", "refresh", 0, serverUrl))
+            server.enqueue(MockResponse().setResponseCode(503))
+
+            assertTrue(viewModel.prepare(transient.id).isFailure)
+            assertEquals(UploadJobState.STAGED, container.upload.find(transient.id)?.state)
+        } finally {
+            server.shutdown()
+        }
+        Unit
+    }
+
+    @Test
+    fun homeActionsAndConfirmedServerChangeRemoveAllOldServerJobs() = runBlocking {
         container.settings.applyConfiguration("https://one.example", 1, 1, true, AuthMode.LOCAL, false)
         container.tokenStore.write(TokenPair("access", "refresh", Long.MAX_VALUE, "https://one.example"))
         val failed = container.upload.enqueue(
@@ -111,6 +148,13 @@ class AppViewModelTest {
         home.confirmCleartext(requireNotNull(container.upload.find(cleartext.id)))
         assertEquals(UploadJobState.QUEUED, container.upload.find(cleartext.id)?.state)
         assertTrue(home.jobs().first().isNotEmpty())
+        val terminalFailure = container.upload.enqueue(
+            IncomingInput.Url("https://books.test/still-failed.fb2", "still-failed.fb2"),
+            UploadSettingsSnapshot("https://one.example"),
+        )
+        container.upload.transition(terminalFailure.id, UploadJobState.QUEUED)
+        container.upload.transition(terminalFailure.id, UploadJobState.RUNNING)
+        container.upload.transition(terminalFailure.id, UploadJobState.FAILED, "invalid")
 
         val settings = SettingsViewModel(container)
         assertEquals("https://one.example", settings.current().serverUrl)
@@ -124,7 +168,9 @@ class AppViewModelTest {
             settings.save("https://two.example", AuthMode.OIDC, 4, 5, false, false, confirmServerChange = true),
         )
         assertEquals("https://two.example", settings.current().serverUrl)
+        assertNull(container.upload.find(failed.id))
         assertNull(container.upload.find(cleartext.id))
+        assertNull(container.upload.find(terminalFailure.id))
         assertNull(container.tokenStore.read())
         Unit
     }
@@ -138,7 +184,7 @@ class AppViewModelTest {
             server.enqueue(MockResponse().setBody("""{"oidcEnabled":false}"""))
             server.enqueue(
                 MockResponse().setBody(
-                    """{"accessToken":"access","refreshToken":"refresh","expiresIn":3600}""",
+                    """{"accessToken":"access","refreshToken":"refresh","expires":3600}""",
                 ),
             )
             server.enqueue(MockResponse().setBody("""{"id":1,"username":"reader"}"""))
@@ -182,6 +228,11 @@ class AppViewModelTest {
             assertNotNull(container.tokenStore.read())
 
             server.enqueue(MockResponse().setResponseCode(401))
+            server.enqueue(MockResponse().setResponseCode(401))
+            assertFalse(viewModel.isAuthenticated())
+            assertNull(container.tokenStore.read())
+
+            container.tokenStore.write(tokens.copy(expiresAtMillis = 0))
             server.enqueue(MockResponse().setResponseCode(401))
             assertFalse(viewModel.isAuthenticated())
             assertNull(container.tokenStore.read())

@@ -30,7 +30,7 @@ class AuthRepositoryTest {
             override fun dispatch(request: RecordedRequest): MockResponse = when {
                 request.path!!.endsWith("/auth/refresh") -> {
                     refreshes++
-                    MockResponse().setBody("""{"accessToken":"new","refreshToken":"r2","expiresIn":3600}""")
+                    MockResponse().setBody("""{"accessToken":"new","refreshToken":"r2","expires":3600}""")
                 }
                 else -> MockResponse().setBody("{}")
             }
@@ -76,7 +76,7 @@ class AuthRepositoryTest {
         val server = MockWebServer()
         server.enqueue(
             MockResponse()
-                .setBody("""{"accessToken":"new","refreshToken":"r2","expiresIn":3600}""")
+                .setBody("""{"accessToken":"new","refreshToken":"r2","expires":3600}""")
                 .setBodyDelay(1, TimeUnit.SECONDS),
         )
         server.start()
@@ -98,6 +98,28 @@ class AuthRepositoryTest {
             refresh.await()
 
             assertNull(store.read())
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun usesGrimmoryExpiresSeconds() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse().setBody("""{"accessToken":"access","refreshToken":"refresh","expires":120}"""),
+        )
+        server.start()
+        try {
+            val base = io.github.kemko.grimmoryuploader.data.network.ServerUrl.parse(server.url("/").toString())
+            val auth = AuthRepository(
+                GrimmoryApi(OkHttpClient(), serverUrl = { base }),
+                TestTokenStore(),
+                currentServerUrl = { base.normalized },
+                nowMillis = { 1_000 },
+            )
+
+            assertEquals(121_000L, auth.login("reader", "secret").expiresAtMillis)
         } finally {
             server.shutdown()
         }

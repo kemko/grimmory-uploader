@@ -29,6 +29,7 @@ data class OidcPendingRequest(
 data class OidcAuthorizationData(
     val authorizationEndpoint: String,
     val clientId: String,
+    val scope: String,
     val redirectUri: String,
     val state: String,
     val codeVerifier: String,
@@ -67,6 +68,8 @@ class OidcCoordinator(
             ?: error("Grimmory did not return OIDC provider details")
         val issuer = provider.issuerUri ?: error("OIDC issuer is missing")
         val clientId = provider.clientId ?: error("OIDC client id is missing")
+        val scope = provider.scopes?.trim()?.takeIf(String::isNotEmpty) ?: DEFAULT_SCOPES
+        require(scope.split(Regex("\\s+")).contains("openid")) { "OIDC scopes must include openid" }
         val discovery = api.oidcDiscovery(issuer)
         val authorizationEndpoint = discovery.authorizationEndpoint
             ?: error("OIDC authorization endpoint is missing")
@@ -84,6 +87,7 @@ class OidcCoordinator(
                 OidcAuthorizationData(
                     authorizationEndpoint,
                     clientId,
+                    scope,
                     redirectUri,
                     state,
                     verifier,
@@ -101,6 +105,7 @@ class OidcCoordinator(
             ResponseTypeValues.CODE,
             Uri.parse(redirectUri),
         )
+            .setScope(scope)
             .setState(state)
             .setCodeVerifier(verifier, challenge, "S256")
             .setNonce(nonce)
@@ -161,5 +166,9 @@ class OidcCoordinator(
         check(url.scheme == "https" || url.host in setOf("127.0.0.1", "localhost")) {
             "OIDC endpoints must use HTTPS"
         }
+    }
+
+    private companion object {
+        const val DEFAULT_SCOPES = "openid profile email groups offline_access"
     }
 }

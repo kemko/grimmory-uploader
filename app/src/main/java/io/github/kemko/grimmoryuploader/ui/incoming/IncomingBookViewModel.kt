@@ -27,7 +27,7 @@ class IncomingBookViewModel(private val container: AppContainer) {
                 ),
             )
         }
-        val authenticated = runCatching { container.auth.validAccessToken() != null }.getOrDefault(true)
+        val authenticated = container.auth.isAuthenticated { container.api.currentUser() }
         if (!authenticated) {
             container.upload.transition(job.id, UploadJobState.AWAITING_AUTH)
             IncomingPreparation(requireNotNull(container.upload.find(job.id)), requiresAuth = true)

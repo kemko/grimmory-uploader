@@ -44,7 +44,7 @@ class GrimmoryApiTest {
         val server = MockWebServer()
         server.enqueue(
             MockResponse().setBody(
-                """{"accessToken":"access","refreshToken":"refresh","expiresIn":3600}""",
+                """{"accessToken":"access","refreshToken":"refresh","expires":3600}""",
             ),
         )
         server.start()

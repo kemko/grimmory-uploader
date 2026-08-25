@@ -8,6 +8,8 @@ import io.github.kemko.grimmoryuploader.upload.db.UploadJobDao
 import io.github.kemko.grimmoryuploader.upload.db.UploadJobEntity
 import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class UploadSettingsSnapshot(
     val serverUrl: String,
@@ -40,7 +42,9 @@ class UploadQueueRepository(
     ): UploadJobEntity {
         val stagedPath = if (input is IncomingInput.File) {
             requireNotNull(resolver) { "ContentResolver is required for local input" }
-            staging.stage(resolver, Uri.parse(input.uri), input.displayName).absolutePath
+            withContext(Dispatchers.IO) {
+                staging.stage(resolver, Uri.parse(input.uri), input.displayName).absolutePath
+            }
         } else null
         val job = UploadJobEntity(
             sourceUri = (input as? IncomingInput.File)?.uri,
@@ -83,7 +87,9 @@ class UploadQueueRepository(
         if (current.state !in allowed) return false
         val changed = dao.transition(id, allowed.toList(), state, failureReason, System.currentTimeMillis()) == 1
         if (changed && state in TERMINAL_STATES) {
-            staging.cleanup(dao.find(id)?.stagedPath ?: current.stagedPath)
+            val stagedPath = dao.find(id)?.stagedPath ?: current.stagedPath
+            dao.clearStagedPath(id)
+            staging.cleanup(stagedPath)
         }
         return changed
     }
@@ -100,12 +106,13 @@ class UploadQueueRepository(
 
     suspend fun find(id: Long): UploadJobEntity? = dao.find(id)
 
+    suspend fun jobsForServer(serverUrl: String): List<UploadJobEntity> =
+        dao.byServer(ServerUrl.parse(serverUrl).normalized)
+
     suspend fun cancelForServer(serverUrl: String) {
-        dao.byServer(ServerUrl.parse(serverUrl).normalized).forEach { job ->
-            if (job.state !in setOf(UploadJobState.SUCCEEDED, UploadJobState.FAILED, UploadJobState.CANCELLED)) {
-                staging.cleanup(job.stagedPath)
-                dao.delete(job.id)
-            }
+        jobsForServer(serverUrl).forEach { job ->
+            staging.cleanup(job.stagedPath)
+            dao.delete(job.id)
         }
     }
 

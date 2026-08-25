@@ -12,6 +12,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class OidcProviderDetails(
     val clientId: String? = null,
     val issuerUri: String? = null,
+    val scopes: String? = null,
 )
 
 @Serializable data class LoginRequest(val username: String, val password: String)
@@ -20,8 +21,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class TokenResponse(
     @SerialName("accessToken") val accessToken: String,
     @SerialName("refreshToken") val refreshToken: String? = null,
-    @SerialName("expiresIn") val expiresInSeconds: Long? = null,
-    @SerialName("expiresAt") val expiresAtMillis: Long? = null,
+    @SerialName("expires") val expiresInSeconds: Long? = null,
 )
 
 @Serializable data class UserResponse(

@@ -22,7 +22,7 @@ class OidcCoordinatorTest {
         val server = MockWebServer()
         server.start()
         server.enqueueOidcStart("server-state")
-        server.enqueue(MockResponse().setBody("""{"accessToken":"oidc-access","refreshToken":"oidc-refresh","expiresIn":3600}"""))
+        server.enqueue(MockResponse().setBody("""{"accessToken":"oidc-access","refreshToken":"oidc-refresh","expires":3600}"""))
         try {
             val base = ServerUrl.parse(server.url("/grimmory/").toString())
             val store = TestTokenStore()
@@ -40,6 +40,7 @@ class OidcCoordinatorTest {
             )
             val intent = coordinator.start()
             assertEquals("server-state", authorizationData.state)
+            assertEquals("openid profile email", authorizationData.scope)
             assertEquals(Pkce.challenge(authorizationData.codeVerifier), authorizationData.codeChallenge)
             coordinator.handleCallback(state = "server-state", error = null, code = "abc")
             assertEquals("oidc-access", store.read()!!.accessToken)
@@ -141,7 +142,35 @@ class OidcCoordinatorTest {
                 authorizationIntentFactory = { value -> data = value; android.content.Intent("test.oidc") },
             ).start()
             assertEquals(server.url("/authorize").toString(), data.authorizationEndpoint)
+            assertEquals("openid profile email", data.scope)
             assertEquals(3, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun rejectsProviderScopesWithoutOpenid() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(
+            MockResponse().setBody(
+                """{"oidcEnabled":true,"oidcProviderDetails":{"clientId":"mobile","issuerUri":"${server.url("/issuer")}","scopes":"profile email"}}""",
+            ),
+        )
+        try {
+            val base = ServerUrl.parse(server.url("/").toString())
+            val api = GrimmoryApi(OkHttpClient(), serverUrl = { base })
+            val coordinator = OidcCoordinator(
+                ContextWrapper(null),
+                api,
+                AuthRepository(api, TestTokenStore(), currentServerUrl = { base.normalized }),
+                TestTokenStore(),
+                authorizationIntentFactory = { android.content.Intent("test.oidc") },
+            )
+
+            assertThrows(IllegalArgumentException::class.java) { runBlocking { coordinator.start() } }
+            assertEquals(1, server.requestCount)
         } finally {
             server.shutdown()
         }
@@ -150,7 +179,7 @@ class OidcCoordinatorTest {
     private fun MockWebServer.enqueueOidcStart(state: String) {
         enqueue(
             MockResponse().setBody(
-                """{"oidcEnabled":true,"oidcProviderDetails":{"clientId":"mobile","issuerUri":"${url("/issuer")}"}}""",
+                """{"oidcEnabled":true,"oidcProviderDetails":{"clientId":"mobile","issuerUri":"${url("/issuer")}","scopes":"openid profile email"}}""",
             ),
         )
         enqueue(

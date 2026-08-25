@@ -88,6 +88,10 @@ class FakeUploadJobDao : UploadJobDao {
                 ?.copy(stagedPath = path, displayName = displayName, updatedAt = updatedAt)
         }
 
+    override suspend fun clearStagedPath(id: Long) {
+        change(id) { it.copy(stagedPath = null) }
+    }
+
     override suspend fun updateProgress(id: Long, stage: String, current: Long, total: Long, updatedAt: Long): Int {
         val changed = change(id) { job ->
             job.takeIf { it.state in setOf(UploadJobState.QUEUED, UploadJobState.RUNNING) }
@@ -103,7 +107,7 @@ class FakeUploadJobDao : UploadJobDao {
     }
 
     override suspend fun retry(id: Long, updatedAt: Long): Int = change(id) { job ->
-        job.takeIf { it.state == UploadJobState.FAILED && (it.sourceUrl != null || it.stagedPath != null) }
+        job.takeIf { it.state == UploadJobState.FAILED && it.sourceUrl != null }
             ?.copy(state = UploadJobState.QUEUED, failureReason = null, updatedAt = updatedAt)
     }
 

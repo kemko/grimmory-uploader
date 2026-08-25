@@ -4,7 +4,12 @@
   "changelog-path": "CHANGELOG.md",
   "include-component-in-tag": false,
   "bump-minor-pre-major": true,
-  "extra-files": ["version.properties"],
+  "extra-files": [
+    {
+      "type": "generic",
+      "path": "version.properties"
+    }
+  ],
   "packages": {
     ".": {}
   }
