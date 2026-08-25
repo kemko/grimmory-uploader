@@ -10,12 +10,14 @@ import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
 class TransferScheduler(
     context: Context,
     private val queue: UploadQueueRepository,
+    private val clearNotification: (Long) -> Unit = {},
 ) {
     private val appContext = context.applicationContext
     private val scheduler = appContext.getSystemService(JobScheduler::class.java)
 
     fun schedule(jobId: Long, estimatedUploadBytes: Long = JobInfo.NETWORK_BYTES_UNKNOWN.toLong(), estimatedDownloadBytes: Long = JobInfo.NETWORK_BYTES_UNKNOWN.toLong()): Int {
         val info = jobInfo(jobId, estimatedUploadBytes, estimatedDownloadBytes)
+        clearNotification(jobId)
         val result = scheduler.schedule(info)
         check(result == JobScheduler.RESULT_SUCCESS) { "Unable to schedule transfer job" }
         return info.id
@@ -44,11 +46,28 @@ class TransferScheduler(
 
     fun cancel(jobId: Long) {
         scheduler.cancel(stableJobId(jobId))
+        clearNotification(jobId)
     }
 
-    suspend fun resumeAwaitingAuth() {
+    suspend fun resumeAwaitingAuth(scheduleJob: (Long) -> Unit = { schedule(it) }) {
         queue.pending().filter { it.state == UploadJobState.AWAITING_AUTH }.forEach {
-            if (queue.transition(it.id, UploadJobState.QUEUED)) schedule(it.id)
+            if (queue.transition(it.id, UploadJobState.QUEUED)) {
+                try {
+                    scheduleJob(it.id)
+                } catch (error: Exception) {
+                    queue.transition(it.id, UploadJobState.AWAITING_AUTH, error.message ?: "Scheduling failed")
+                }
+            }
+        }
+    }
+
+    suspend fun ensureQueuedScheduled(ensureJob: (Long) -> Unit = ::ensureScheduled) {
+        queue.pending().filter { it.state == UploadJobState.QUEUED }.forEach {
+            try {
+                ensureJob(it.id)
+            } catch (_: Exception) {
+                // Keep the job queued so the next visible launch can retry it.
+            }
         }
     }
 

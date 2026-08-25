@@ -87,7 +87,7 @@ class AppContainer(
     val upload: UploadQueueRepository = UploadQueueRepository(database.jobs(), staging)
 
     val transferNotifications: TransferNotificationManager = TransferNotificationManager(appContext)
-    val transferScheduler: TransferScheduler = TransferScheduler(appContext, upload)
+    val transferScheduler: TransferScheduler = TransferScheduler(appContext, upload, transferNotifications::cancel)
     val pipeline: UploadPipeline = UploadPipeline(
         queue = upload,
         staging = staging,
@@ -97,6 +97,5 @@ class AppContainer(
     val pendingJobReconciler: PendingJobReconciler = PendingJobReconciler(
         upload,
         staging,
-        transferScheduler::ensureScheduled,
     )
 }

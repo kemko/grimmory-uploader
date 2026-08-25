@@ -151,4 +151,31 @@ class UploadQueueRepositoryTest {
         root.deleteRecursively()
         Unit
     }
+
+    @Test
+    fun confirmsSourceAndServerCleartextSeparately() = runBlocking {
+        val root = Files.createTempDirectory("queue-cleartext").toFile()
+        val dao = FakeUploadJobDao()
+        val repository = UploadQueueRepository(dao, StagingStore(root))
+        val job = repository.enqueue(
+            IncomingInput.Url("http://books.test/book.fb2", "book.fb2"),
+            UploadSettingsSnapshot("http://one.example"),
+        )
+        repository.transition(job.id, UploadJobState.QUEUED)
+        repository.transition(job.id, UploadJobState.RUNNING)
+        repository.transition(job.id, UploadJobState.AWAITING_CLEARTEXT)
+
+        repository.confirmCleartext(job.id)
+
+        assertTrue(repository.find(job.id)?.sourceCleartextConfirmed == true)
+        assertFalse(repository.find(job.id)?.serverCleartextConfirmed == true)
+        repository.transition(job.id, UploadJobState.RUNNING)
+        repository.transition(job.id, UploadJobState.AWAITING_CLEARTEXT)
+
+        repository.confirmCleartext(job.id)
+
+        assertTrue(repository.find(job.id)?.serverCleartextConfirmed == true)
+        root.deleteRecursively()
+        Unit
+    }
 }

@@ -106,6 +106,11 @@ class FakeUploadJobDao : UploadJobDao {
             ?.copy(state = UploadJobState.QUEUED, sourceCleartextConfirmed = true, failureReason = null, updatedAt = updatedAt)
     }
 
+    override suspend fun confirmServerCleartext(id: Long, updatedAt: Long): Int = change(id) { job ->
+        job.takeIf { it.state == UploadJobState.AWAITING_CLEARTEXT }
+            ?.copy(state = UploadJobState.QUEUED, serverCleartextConfirmed = true, failureReason = null, updatedAt = updatedAt)
+    }
+
     override suspend fun retry(id: Long, updatedAt: Long): Int = change(id) { job ->
         job.takeIf { it.state == UploadJobState.FAILED && it.sourceUrl != null }
             ?.copy(state = UploadJobState.QUEUED, failureReason = null, updatedAt = updatedAt)

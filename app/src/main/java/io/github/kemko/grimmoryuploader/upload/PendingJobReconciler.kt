@@ -5,7 +5,6 @@ import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
 class PendingJobReconciler(
     private val queue: UploadQueueRepository,
     private val staging: StagingStore,
-    private val ensureScheduled: (Long) -> Unit = {},
 ) {
     suspend fun reconcile() {
         val pending = queue.pending()
@@ -13,8 +12,5 @@ class PendingJobReconciler(
             queue.transition(it.id, UploadJobState.QUEUED, "Transfer was interrupted")
         }
         staging.reconcile(pending.mapNotNull { it.stagedPath }.toSet())
-        queue.pending().filter { it.state == UploadJobState.QUEUED }.forEach {
-            ensureScheduled(it.id)
-        }
     }
 }

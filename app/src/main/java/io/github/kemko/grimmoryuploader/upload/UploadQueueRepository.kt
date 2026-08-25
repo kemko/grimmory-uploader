@@ -10,6 +10,7 @@ import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 data class UploadSettingsSnapshot(
     val serverUrl: String,
@@ -128,8 +129,17 @@ class UploadQueueRepository(
         dao.updateProgress(id, progress.stage.name, progress.current, progress.total, System.currentTimeMillis())
     }
 
-    suspend fun confirmSourceCleartext(id: Long) {
-        check(dao.confirmSourceCleartext(id, System.currentTimeMillis()) == 1) {
+    suspend fun confirmCleartext(id: Long) {
+        val job = requireNotNull(dao.find(id)) { "Upload is missing" }
+        val now = System.currentTimeMillis()
+        val changed = when {
+            job.sourceUrl?.toHttpUrlOrNull()?.scheme == "http" && !job.sourceCleartextConfirmed ->
+                dao.confirmSourceCleartext(id, now)
+            ServerUrl.parse(job.serverUrl).isCleartext && !job.serverCleartextConfirmed ->
+                dao.confirmServerCleartext(id, now)
+            else -> 0
+        }
+        check(changed == 1) {
             "Upload is not awaiting HTTP confirmation"
         }
     }

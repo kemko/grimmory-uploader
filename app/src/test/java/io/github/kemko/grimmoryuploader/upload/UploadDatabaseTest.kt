@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import io.github.kemko.grimmoryuploader.upload.db.UploadDatabase
 import io.github.kemko.grimmoryuploader.upload.db.UploadJobEntity
 import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
+import java.nio.file.Files
 import java.util.UUID
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -118,7 +119,7 @@ class UploadDatabaseTest {
                     sourceUrl, displayName, state, serverUrl, libraryId, pathId,
                     recompressEpub, createdAt, updatedAt
                 ) VALUES ('https://books.example/book.fb2', 'book.fb2', 'QUEUED',
-                    'https://one.example', 1, 1, 1, 1, 1)
+                    'http://one.example', 1, 1, 1, 1, 1)
                 """.trimIndent(),
             )
             versionOne.version = 1
@@ -132,7 +133,15 @@ class UploadDatabaseTest {
         assertEquals("book.fb2", job.displayName)
         assertEquals(false, job.serverCleartextConfirmed)
         assertEquals(-1L, job.progressTotal)
+        val root = Files.createTempDirectory("migration-cleartext").toFile()
+        val queue = UploadQueueRepository(migrated.jobs(), StagingStore(root))
+        queue.transition(job.id, UploadJobState.RUNNING)
+        queue.transition(job.id, UploadJobState.AWAITING_CLEARTEXT)
+        queue.confirmCleartext(job.id)
+        assertEquals(true, queue.find(job.id)?.serverCleartextConfirmed)
+        assertEquals(false, queue.find(job.id)?.sourceCleartextConfirmed)
         migrated.close()
+        root.deleteRecursively()
         context.deleteDatabase(name)
         Unit
     }

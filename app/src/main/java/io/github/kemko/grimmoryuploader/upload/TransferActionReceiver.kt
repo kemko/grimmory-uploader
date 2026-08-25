@@ -30,7 +30,7 @@ class TransferActionReceiver : BroadcastReceiver() {
                 goAsync().also { result ->
                     CoroutineScope(Dispatchers.IO).launch {
                         runCatching {
-                            app.container.upload.confirmSourceCleartext(jobId)
+                            app.container.upload.confirmCleartext(jobId)
                             app.container.transferScheduler.schedule(jobId)
                         }
                         result.finish()

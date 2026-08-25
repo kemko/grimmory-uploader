@@ -61,6 +61,7 @@ class MainActivity : ComponentActivity() {
                         authError = oidcError,
                         onLaunchIntentConsumed = ::consumeLaunchIntent,
                         notificationPermissionDenied = notificationPermissionDenied,
+                        awaitStartupReconciliation = app.startupReconciliation::await,
                     )
                 }
             }
@@ -81,6 +82,12 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         notificationPermissionDenied = notificationPermissionWasDenied()
+        val app = application as GrimmoryUploaderApp
+        lifecycleScope.launch {
+            if (runCatching { app.startupReconciliation.await() }.isSuccess) {
+                app.container.transferScheduler.ensureQueuedScheduled()
+            }
+        }
     }
 
     private fun requestNotificationPermission() {

@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.text.KeyboardOptions
@@ -51,11 +52,12 @@ import io.github.kemko.grimmoryuploader.ui.settings.SettingsViewModel
 import io.github.kemko.grimmoryuploader.ui.settings.ServerChangeConfirmationRequired
 import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
 import io.github.kemko.grimmoryuploader.upload.TransferStage
+import io.github.kemko.grimmoryuploader.upload.db.UploadJobEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private enum class Destination { LOADING, ONBOARDING, AUTH, HOME, SETTINGS, ERROR }
+private enum class Destination { LOADING, ONBOARDING, AUTH, INCOMING, HOME, SETTINGS, ERROR }
 
 @Composable
 fun AppNavHost(
@@ -66,6 +68,7 @@ fun AppNavHost(
     authError: String? = null,
     onLaunchIntentConsumed: () -> Unit = {},
     notificationPermissionDenied: Boolean = false,
+    awaitStartupReconciliation: suspend () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -87,7 +90,7 @@ fun AppNavHost(
                     authDecision = authViewModel.modeDecision()
                     destination = Destination.AUTH
                 } else {
-                    destination = Destination.HOME
+                    destination = Destination.INCOMING
                 }
             },
             onFailure = { error ->
@@ -98,6 +101,11 @@ fun AppNavHost(
     }
 
     LaunchedEffect(launchIntent, refreshKey) {
+        runCatching { awaitStartupReconciliation() }.onFailure { error ->
+            incomingError = error.message ?: "Unable to restore pending transfers"
+            destination = Destination.ERROR
+            return@LaunchedEffect
+        }
         if (launchIntent != null && launchIntent.action != Intent.ACTION_MAIN) {
             val persisted = withContext(Dispatchers.IO) {
                 runCatching { IncomingIntentParser(context.contentResolver).parse(launchIntent) }
@@ -121,7 +129,32 @@ fun AppNavHost(
         if (settings.serverUrl == null) {
             destination = Destination.ONBOARDING
         } else if (pendingJobId != null) {
-            preparePending(requireNotNull(pendingJobId))
+            when (container.upload.find(requireNotNull(pendingJobId))?.state) {
+                UploadJobState.STAGED -> preparePending(requireNotNull(pendingJobId))
+                UploadJobState.AWAITING_AUTH -> {
+                    runCatching { authViewModel.isAuthenticated() }.fold(
+                        onSuccess = { authenticated ->
+                            if (authenticated) {
+                                requestNotificationPermission()
+                                authViewModel.resumeTransfers()
+                                destination = Destination.INCOMING
+                            } else {
+                                authDecision = authViewModel.modeDecision()
+                                destination = Destination.AUTH
+                            }
+                        },
+                        onFailure = { error ->
+                            incomingError = error.message ?: "Unable to verify authentication"
+                            destination = Destination.ERROR
+                        },
+                    )
+                }
+                null -> {
+                    incomingError = "Incoming upload is missing"
+                    destination = Destination.ERROR
+                }
+                else -> destination = Destination.INCOMING
+            }
         } else {
             runCatching { authViewModel.isAuthenticated() }.fold(
                 onSuccess = { authenticated ->
@@ -136,14 +169,6 @@ fun AppNavHost(
                     destination = Destination.ERROR
                 },
             )
-        }
-    }
-
-    LaunchedEffect(destination, pendingJob?.state, pendingJob?.failureReason) {
-        if (destination == Destination.HOME && pendingJob?.state == UploadJobState.FAILED) {
-            incomingError = pendingJob.failureReason ?: "Upload failed"
-            pendingJobId = null
-            destination = Destination.ERROR
         }
     }
 
@@ -167,10 +192,22 @@ fun AppNavHost(
                 scope.launch {
                     requestNotificationPermission()
                     AuthViewModel(container).resumeTransfers()
-                    destination = Destination.HOME
+                    destination = if (pendingJobId == null) Destination.HOME else Destination.INCOMING
                 }
             },
         )
+        Destination.INCOMING -> pendingJob?.let { job ->
+            IncomingBookScreen(
+                job = job,
+                viewModel = remember { HomeViewModel(container) },
+                requestNotificationPermission = requestNotificationPermission,
+                notificationPermissionDenied = notificationPermissionDenied,
+                onDone = {
+                    pendingJobId = null
+                    destination = Destination.HOME
+                },
+            )
+        } ?: LoadingScreen()
         Destination.HOME -> HomeScreen(
             viewModel = remember { HomeViewModel(container) },
             onSettings = { destination = Destination.SETTINGS },
@@ -181,6 +218,7 @@ fun AppNavHost(
             viewModel = remember { SettingsViewModel(container) },
             onSaved = { serverChanged ->
                 if (serverChanged) {
+                    pendingJobId = null
                     scope.launch {
                         authDecision = authViewModel.modeDecision()
                         destination = Destination.AUTH
@@ -238,6 +276,7 @@ fun AuthScreen(
     var password by remember { mutableStateOf("") }
     var message by remember { mutableStateOf(error) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(error) { message = error }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -313,6 +352,10 @@ fun HomeScreen(
                             requestNotificationPermission()
                             scope.launch { viewModel.retry(job) }
                         }) { Text("Retry") }
+                        if (job.state == UploadJobState.AWAITING_AUTH) TextButton(onClick = {
+                            requestNotificationPermission()
+                            scope.launch { viewModel.resumeAwaitingAuth() }
+                        }) { Text("Retry") }
                         if (job.state == UploadJobState.AWAITING_CLEARTEXT) TextButton(onClick = {
                             requestNotificationPermission()
                             scope.launch { viewModel.confirmCleartext(job) }
@@ -335,6 +378,71 @@ fun HomeScreen(
 }
 
 @Composable
+fun IncomingBookScreen(
+    job: UploadJobEntity,
+    viewModel: HomeViewModel,
+    requestNotificationPermission: () -> Unit,
+    notificationPermissionDenied: Boolean,
+    onDone: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    Scaffold(topBar = { TopAppBar(title = { Text("Book transfer") }) }) { padding ->
+        Column(
+            Modifier.fillMaxSize().padding(padding).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(job.displayName, style = MaterialTheme.typography.headlineSmall)
+            Text(job.failureReason ?: job.state.label)
+            if (notificationPermissionDenied) {
+                Text("Notifications are disabled; background progress may be unavailable.")
+            }
+            job.progressStage?.let { stage ->
+                Text(runCatching { TransferStage.valueOf(stage).label }.getOrDefault(stage))
+                if (job.progressTotal > 0) {
+                    LinearProgressIndicator(
+                        progress = { (job.progressCurrent.toFloat() / job.progressTotal).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else if (job.state == UploadJobState.RUNNING) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            }
+            if (job.state == UploadJobState.FAILED && job.sourceUrl != null) {
+                Button(onClick = {
+                    requestNotificationPermission()
+                    scope.launch { viewModel.retry(job) }
+                }) { Text("Retry") }
+            }
+            if (job.state == UploadJobState.AWAITING_AUTH) {
+                Button(onClick = {
+                    requestNotificationPermission()
+                    scope.launch { viewModel.resumeAwaitingAuth() }
+                }) { Text("Retry") }
+            }
+            if (job.state == UploadJobState.AWAITING_CLEARTEXT) {
+                Button(onClick = {
+                    requestNotificationPermission()
+                    scope.launch { viewModel.confirmCleartext(job) }
+                }) { Text("Allow HTTP") }
+            }
+            if (
+                job.state in setOf(
+                    UploadJobState.STAGED,
+                    UploadJobState.AWAITING_AUTH,
+                    UploadJobState.AWAITING_CLEARTEXT,
+                    UploadJobState.QUEUED,
+                    UploadJobState.RUNNING,
+                )
+            ) {
+                OutlinedButton(onClick = { scope.launch { viewModel.cancel(job) } }) { Text("Cancel") }
+            } else {
+                Button(onDone) { Text("Done") }
+            }
+        }
+    }
+}
+
+@Composable
 fun SettingsScreen(viewModel: SettingsViewModel, onSaved: (Boolean) -> Unit) {
     var loaded by remember { mutableStateOf(false) }
     var url by remember { mutableStateOf("") }
@@ -343,14 +451,27 @@ fun SettingsScreen(viewModel: SettingsViewModel, onSaved: (Boolean) -> Unit) {
     var mode by remember { mutableStateOf(AuthMode.AUTO) }
     var recompress by remember { mutableStateOf(true) }
     var httpConfirmed by remember { mutableStateOf(false) }
+    var originalUrl by remember { mutableStateOf("") }
+    var originalHttpConfirmed by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var confirmServerChange by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(Unit) { viewModel.current().also { settings -> url = settings.serverUrl.orEmpty(); libraryId = settings.libraryId.toString(); pathId = settings.pathId.toString(); mode = settings.authMode; recompress = settings.recompressEpub; httpConfirmed = settings.httpConfirmed; loaded = true } }
+    LaunchedEffect(Unit) { viewModel.current().also { settings -> url = settings.serverUrl.orEmpty(); originalUrl = url; libraryId = settings.libraryId.toString(); pathId = settings.pathId.toString(); mode = settings.authMode; recompress = settings.recompressEpub; httpConfirmed = settings.httpConfirmed; originalHttpConfirmed = settings.httpConfirmed; loaded = true } }
     if (!loaded) return
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            item { OutlinedTextField(url, { url = it }, label = { Text("Server URL") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+            item {
+                OutlinedTextField(
+                    url,
+                    {
+                        url = it
+                        httpConfirmed = retainedHttpConfirmation(originalUrl, originalHttpConfirmed, it)
+                    },
+                    label = { Text("Server URL") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             item { OutlinedTextField(libraryId, { libraryId = it }, label = { Text("Library ID") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
             item { OutlinedTextField(pathId, { pathId = it }, label = { Text("Path ID") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
             item { Text("Auth mode") }
@@ -358,7 +479,12 @@ fun SettingsScreen(viewModel: SettingsViewModel, onSaved: (Boolean) -> Unit) {
                 item { Row { RadioButton(mode == candidate, { mode = candidate }); Text(candidate.name, Modifier.padding(top = 12.dp)) } }
             }
             item { Row { Checkbox(recompress, { recompress = it }); Text("Recompress EPUB", Modifier.padding(top = 12.dp)) } }
-            if (url.trim().lowercase().startsWith("http://")) item { Row { Checkbox(httpConfirmed, { httpConfirmed = it }); Text("Allow cleartext HTTP", Modifier.padding(top = 12.dp)) } }
+            if (url.trim().lowercase().startsWith("http://")) item {
+                Row {
+                    Checkbox(httpConfirmed, { httpConfirmed = it }, Modifier.testTag("http-confirmation"))
+                    Text("Allow cleartext HTTP", Modifier.padding(top = 12.dp))
+                }
+            }
             error?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
             item { Button(onClick = {
                 scope.launch {
@@ -401,6 +527,13 @@ fun SettingsScreen(viewModel: SettingsViewModel, onSaved: (Boolean) -> Unit) {
         )
     }
 }
+
+internal fun retainedHttpConfirmation(originalUrl: String, originalConfirmed: Boolean, editedUrl: String): Boolean =
+    originalConfirmed &&
+        runCatching {
+            io.github.kemko.grimmoryuploader.data.network.ServerUrl.parse(originalUrl).normalized ==
+                io.github.kemko.grimmoryuploader.data.network.ServerUrl.parse(editedUrl).normalized
+        }.getOrDefault(false)
 
 @Composable
 private fun ErrorScreen(message: String, onBack: () -> Unit, onSettings: () -> Unit) {

@@ -23,7 +23,9 @@ import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.crypto.spec.SecretKeySpec
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -106,6 +108,38 @@ class AppNavHostTest {
         compose.waitUntil(5_000) { provider.queryOffMain.get() && provider.typeOffMain.get() }
         assertTrue(provider.queryOffMain.get())
         assertTrue(provider.typeOffMain.get())
+        container.database.close()
+    }
+
+    @Test
+    fun incomingWaitsForStartupReconciliationBeforeStaging() {
+        val cipher = AesGcmTokenCipher(
+            SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
+        )
+        val container = AppContainer(context, cipher)
+        val source = File(context.cacheDir, "startup.fb2").apply {
+            writeText("<?xml version=\"1.0\"?><FictionBook/>")
+        }
+        val ready = CompletableDeferred<Unit>()
+
+        compose.setContent {
+            MaterialTheme {
+                AppNavHost(
+                    container = container,
+                    launchIntent = Intent(Intent.ACTION_VIEW)
+                        .setDataAndType(Uri.fromFile(source), "application/x-fictionbook+xml"),
+                    awaitStartupReconciliation = { ready.await() },
+                )
+            }
+        }
+
+        compose.waitForIdle()
+        assertNull(runBlocking { container.upload.pendingIntake() })
+        ready.complete(Unit)
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("Connect Grimmory").fetchSemanticsNodes().isNotEmpty()
+        }
+        assertNotNull(runBlocking { container.upload.pendingIntake() })
         container.database.close()
     }
 

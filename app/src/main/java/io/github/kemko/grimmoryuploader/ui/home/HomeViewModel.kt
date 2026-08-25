@@ -18,8 +18,12 @@ class HomeViewModel(private val container: AppContainer) {
         container.transferScheduler.cancel(job.id)
     }
 
+    suspend fun resumeAwaitingAuth() {
+        container.transferScheduler.resumeAwaitingAuth()
+    }
+
     suspend fun confirmCleartext(job: UploadJobEntity) {
-        container.upload.confirmSourceCleartext(job.id)
+        container.upload.confirmCleartext(job.id)
         container.transferScheduler.schedule(job.id)
     }
 }

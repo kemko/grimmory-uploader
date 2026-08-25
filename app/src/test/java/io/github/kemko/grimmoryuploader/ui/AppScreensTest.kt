@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
@@ -37,6 +38,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -231,7 +233,35 @@ class AppScreensTest {
     }
 
     @Test
-    fun activeIncomingFailureRoutesToFullScreenError() {
+    fun authenticatedLaunchResumesAwaitingTransfer() {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val serverUrl = server.url("/").toString().trimEnd('/')
+            val job = runBlocking {
+                container.settings.applyConfiguration(serverUrl, 1, 1, true, AuthMode.LOCAL, true)
+                container.tokenStore.write(TokenPair("access", "refresh", Long.MAX_VALUE, serverUrl))
+                container.upload.enqueue(
+                    IncomingInput.Url("https://books.test/resume.fb2", "resume.fb2"),
+                    UploadSettingsSnapshot(serverUrl, serverCleartextConfirmed = true),
+                ).also { container.upload.transition(it.id, UploadJobState.AWAITING_AUTH) }
+            }
+            server.enqueue(MockResponse().setBody("""{"id":1,"username":"reader"}"""))
+
+            compose.setContent { MaterialTheme { AppNavHost(container) } }
+
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithText("Book transfer").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("resume.fb2").assertIsDisplayed()
+            assertTrue(runBlocking { container.upload.find(job.id)?.state == UploadJobState.QUEUED })
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun activeIncomingShowsFullScreenProgressAndResult() {
         val server = MockWebServer()
         server.start()
         try {
@@ -256,17 +286,35 @@ class AppScreensTest {
             }
             val job = runBlocking { container.upload.observeAll().first().single() }
             runBlocking {
+                container.upload.updateProgress(
+                    job.id,
+                    TransferProgress(TransferStage.VALIDATION, current = 1, total = 2),
+                )
+            }
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithText("Validating").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("Cancel").assertIsDisplayed()
+            runBlocking {
                 container.upload.transition(job.id, UploadJobState.RUNNING)
                 container.upload.transition(job.id, UploadJobState.FAILED, "DJVU is not supported")
             }
 
             compose.waitUntil(5_000) {
-                compose.onAllNodesWithText("Something went wrong").fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodesWithText("DJVU is not supported").fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("DJVU is not supported").assertIsDisplayed()
+            compose.onNodeWithText("Done").assertIsDisplayed()
         } finally {
             server.shutdown()
         }
+    }
+
+    @Test
+    fun httpConfirmationIsRetainedOnlyForTheSameNormalizedServer() {
+        assertTrue(retainedHttpConfirmation("http://one.example", true, " HTTP://ONE.EXAMPLE/ "))
+        assertFalse(retainedHttpConfirmation("http://one.example", true, "http://two.example"))
+        assertFalse(retainedHttpConfirmation("http://one.example", false, "http://one.example"))
     }
 
     @Test
@@ -292,7 +340,10 @@ class AppScreensTest {
                 compose.onAllNodesWithText("Server URL").fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("Server URL").performTextReplacement(secondUrl)
-            compose.onNode(hasScrollAction()).performScrollToNode(hasText("Save"))
+            val settings = compose.onNode(hasScrollAction())
+            settings.performScrollToNode(hasText("Allow cleartext HTTP"))
+            compose.onNodeWithTag("http-confirmation").performClick()
+            settings.performScrollToNode(hasText("Save"))
             compose.onNodeWithText("Save").performClick()
             compose.onNodeWithText("Change server").performClick()
 
