@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import io.github.kemko.grimmoryuploader.data.auth.AesGcmTokenCipher
 import io.github.kemko.grimmoryuploader.data.auth.AuthModeDecision
@@ -16,6 +17,7 @@ import io.github.kemko.grimmoryuploader.ui.auth.AuthViewModel
 import java.security.SecureRandom
 import javax.crypto.spec.SecretKeySpec
 import org.junit.Rule
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -34,6 +36,7 @@ class AuthScreenTest {
             SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
         )
         val container = AppContainer(context, cipher)
+        var settingsOpened = false
         compose.setContent {
             MaterialTheme {
                 AuthScreen(
@@ -41,6 +44,7 @@ class AuthScreenTest {
                     error = "OIDC sign-in was cancelled",
                     modeDecision = AuthModeDecision(AuthMode.LOCAL),
                     launchOidc = {},
+                    onSettings = { settingsOpened = true },
                     onAuthenticated = {},
                 )
             }
@@ -50,6 +54,8 @@ class AuthScreenTest {
         compose.onNodeWithText("OIDC sign-in was cancelled").assertIsDisplayed()
         compose.onAllNodesWithText("Sign in").assertCountEquals(2)
         compose.onAllNodesWithText("Sign in with OIDC").assertCountEquals(0)
+        compose.onNodeWithText("Settings").performClick()
+        assertTrue(settingsOpened)
         container.database.close()
     }
 }

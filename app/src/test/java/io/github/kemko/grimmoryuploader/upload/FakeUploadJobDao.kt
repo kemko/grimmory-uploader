@@ -11,6 +11,8 @@ class FakeUploadJobDao : UploadJobDao {
     private val jobs = linkedMapOf<Long, UploadJobEntity>()
     private val values = MutableStateFlow<List<UploadJobEntity>>(emptyList())
     private var stagedPathBeforeTransition: String? = null
+    var progressUpdateCount = 0
+        private set
 
     override suspend fun insert(job: UploadJobEntity): Long = synchronized(this) {
         nextId.also { id ->
@@ -86,11 +88,14 @@ class FakeUploadJobDao : UploadJobDao {
                 ?.copy(stagedPath = path, displayName = displayName, updatedAt = updatedAt)
         }
 
-    override suspend fun updateProgress(id: Long, stage: String, current: Long, total: Long, updatedAt: Long): Int =
-        change(id) { job ->
+    override suspend fun updateProgress(id: Long, stage: String, current: Long, total: Long, updatedAt: Long): Int {
+        val changed = change(id) { job ->
             job.takeIf { it.state in setOf(UploadJobState.QUEUED, UploadJobState.RUNNING) }
                 ?.copy(progressStage = stage, progressCurrent = current, progressTotal = total, updatedAt = updatedAt)
         }
+        if (changed == 1) progressUpdateCount++
+        return changed
+    }
 
     override suspend fun confirmSourceCleartext(id: Long, updatedAt: Long): Int = change(id) { job ->
         job.takeIf { it.state == UploadJobState.AWAITING_CLEARTEXT }

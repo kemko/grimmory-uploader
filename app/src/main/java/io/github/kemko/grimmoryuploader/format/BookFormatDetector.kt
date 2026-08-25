@@ -37,46 +37,49 @@ class BookFormatDetector {
         return detectXml(buffered)
     }
 
-    private fun detectZip(file: File, cancelled: () -> Boolean): BookFormat = ZipFile(file).use { zip ->
-        var total = 0L
-        var entries = 0
-        var fb2Count = 0
-        var epub = false
-        var firstEntry = true
-        val enumeration = zip.entries()
-        while (enumeration.hasMoreElements()) {
-            ensureNotCancelled(cancelled)
-            val entry = enumeration.nextElement()
-            entries++
-            require(entries <= ZipGuards.MAX_ENTRIES) { "Too many ZIP entries" }
-            ZipGuards.validateEntry(entry, entry.compressedSize, Math.addExact(total, entry.size.coerceAtLeast(0)))
-            val limit = ZipGuards.maxReadableBytes(entry.compressedSize, total)
-            zip.getInputStream(entry).use { raw ->
-                val counter = CountingInputStream(CancellableInputStream(raw, cancelled), limit)
-                val content = if (firstEntry && entry.name == "mimetype") counter.readNBytes(64) else null
-                if (!entry.isDirectory && entry.name.lowercase().endsWith(".fb2")) {
-                    require(isFictionBook(counter)) { "FB2 XML is invalid" }
-                    fb2Count++
+    private fun detectZip(file: File, cancelled: () -> Boolean): BookFormat {
+        ZipGuards.validateArchiveMetadata(file)
+        return ZipFile(file).use { zip ->
+            var total = 0L
+            var entries = 0
+            var fb2Count = 0
+            var epub = false
+            var firstEntry = true
+            val enumeration = zip.entries()
+            while (enumeration.hasMoreElements()) {
+                ensureNotCancelled(cancelled)
+                val entry = enumeration.nextElement()
+                entries++
+                require(entries <= ZipGuards.MAX_ENTRIES) { "Too many ZIP entries" }
+                ZipGuards.validateEntry(entry, entry.compressedSize, Math.addExact(total, entry.size.coerceAtLeast(0)))
+                val limit = ZipGuards.maxReadableBytes(entry.compressedSize, total)
+                zip.getInputStream(entry).use { raw ->
+                    val counter = CountingInputStream(CancellableInputStream(raw, cancelled), limit)
+                    val content = if (firstEntry && entry.name == "mimetype") counter.readNBytes(64) else null
+                    if (!entry.isDirectory && entry.name.lowercase().endsWith(".fb2")) {
+                        require(isFictionBook(counter)) { "FB2 XML is invalid" }
+                        fb2Count++
+                    }
+                    counter.copyTo(java.io.OutputStream.nullOutputStream(), DEFAULT_BUFFER_SIZE)
+                    total = Math.addExact(total, counter.count)
+                    ZipGuards.validateActualEntry(entry, entry.compressedSize, counter.count, total)
+                    require(entry.crc < 0 || entry.crc == counter.crc) { "ZIP entry checksum is invalid" }
+                    if (
+                        firstEntry && entry.name == "mimetype" &&
+                        content?.toString(StandardCharsets.UTF_8)?.trim() == "application/epub+zip" &&
+                        entry.method == ZipEntry.STORED
+                    ) {
+                        epub = true
+                    }
                 }
-                counter.copyTo(java.io.OutputStream.nullOutputStream(), DEFAULT_BUFFER_SIZE)
-                total = Math.addExact(total, counter.count)
-                ZipGuards.validateActualEntry(entry, entry.compressedSize, counter.count, total)
-                require(entry.crc < 0 || entry.crc == counter.crc) { "ZIP entry checksum is invalid" }
-                if (
-                    firstEntry && entry.name == "mimetype" &&
-                    content?.toString(StandardCharsets.UTF_8)?.trim() == "application/epub+zip" &&
-                    entry.method == ZipEntry.STORED
-                ) {
-                    epub = true
-                }
+                firstEntry = false
             }
-            firstEntry = false
-        }
-        require(fb2Count <= 1) { "Archive contains multiple FB2 books" }
-        when {
-            epub -> BookFormat.EPUB
-            fb2Count == 1 -> BookFormat.FB2_ZIP
-            else -> throw UnsupportedBookException("Unsupported ZIP archive")
+            require(fb2Count <= 1) { "Archive contains multiple FB2 books" }
+            when {
+                epub -> BookFormat.EPUB
+                fb2Count == 1 -> BookFormat.FB2_ZIP
+                else -> throw UnsupportedBookException("Unsupported ZIP archive")
+            }
         }
     }
 

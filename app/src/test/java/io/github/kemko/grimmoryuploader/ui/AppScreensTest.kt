@@ -203,6 +203,8 @@ class AppScreensTest {
         compose.onNodeWithText("Something went wrong").assertIsDisplayed()
         compose.onNodeWithText("Back").assertIsDisplayed()
         assertTrue(consumed)
+        compose.onNodeWithText("Settings").performClick()
+        compose.onNodeWithText("Connect Grimmory").assertIsDisplayed()
     }
 
     @Test

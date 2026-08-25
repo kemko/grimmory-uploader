@@ -72,6 +72,7 @@ fun AppNavHost(
     var pendingJobId by remember { mutableStateOf<Long?>(null) }
     var authDecision by remember { mutableStateOf<AuthModeDecision?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
+    var hasConfiguredServer by remember { mutableStateOf(false) }
     val incomingViewModel = remember { IncomingBookViewModel(container) }
     val authViewModel = remember { AuthViewModel(container) }
 
@@ -110,6 +111,7 @@ fun AppNavHost(
             pendingJobId = container.upload.pendingIntake()?.id
         }
         val settings = container.settings.current()
+        hasConfiguredServer = settings.serverUrl != null
         if (settings.serverUrl == null) {
             destination = Destination.ONBOARDING
         } else if (pendingJobId != null) {
@@ -146,6 +148,7 @@ fun AppNavHost(
             error = authError,
             modeDecision = authDecision,
             launchOidc = launchOidc,
+            onSettings = { destination = Destination.SETTINGS },
             onAuthenticated = {
                 scope.launch {
                     requestNotificationPermission()
@@ -176,6 +179,9 @@ fun AppNavHost(
         Destination.ERROR -> ErrorScreen(
             message = incomingError ?: "Unable to open book",
             onBack = { refreshKey++ },
+            onSettings = {
+                destination = if (hasConfiguredServer) Destination.SETTINGS else Destination.ONBOARDING
+            },
         )
     }
 }
@@ -211,13 +217,21 @@ fun AuthScreen(
     error: String?,
     modeDecision: AuthModeDecision? = null,
     launchOidc: (Intent) -> Unit,
+    onSettings: () -> Unit,
     onAuthenticated: () -> Unit,
 ) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var message by remember { mutableStateOf(error) }
     val scope = rememberCoroutineScope()
-    Scaffold(topBar = { TopAppBar(title = { Text("Sign in") }) }) { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Sign in") },
+                actions = { TextButton(onSettings) { Text("Settings") } },
+            )
+        },
+    ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(username, { username = it }, label = { Text("Username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(
@@ -375,11 +389,12 @@ fun SettingsScreen(viewModel: SettingsViewModel, onSaved: (Boolean) -> Unit) {
 }
 
 @Composable
-private fun ErrorScreen(message: String, onBack: () -> Unit) {
+private fun ErrorScreen(message: String, onBack: () -> Unit, onSettings: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
         Text("Something went wrong", style = MaterialTheme.typography.headlineSmall)
         Text(message, Modifier.padding(vertical = 12.dp))
         Button(onBack) { Text("Back") }
+        OutlinedButton(onSettings) { Text("Settings") }
     }
 }
 

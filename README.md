@@ -61,7 +61,7 @@ The queued job stores a snapshot of the server URL, library ID, path ID, and EPU
 
 File extension and MIME type are hints only. Broad Android MIME filters are needed because Android may not filter chooser results reliably by extension; the app checks the bytes after receiving the intent. HTML/error pages, ordinary ZIP archives, malformed XML or ZIP, unsafe ZIP paths, oversized/high-ratio archives, multiple FB2 entries, and DJVU are rejected before upload. XML external entities are disabled.
 
-ZIP input is limited to 2,000 entries, 512 MiB per entry and in total, a 100:1 compression ratio, 240-character entry names, and 16 path components. Any staged local or downloaded source is limited to 512 MiB.
+ZIP input is limited to 2,000 entries, a 16 MiB central directory, 512 MiB per entry and in total, a 100:1 compression ratio, 240-character entry names, and 16 path components. ZIP64 metadata is rejected. Any staged local or downloaded source is limited to 512 MiB.
 
 FB2.ZIP is unpacked directly into the upload stream. When EPUB recompression is enabled, `mimetype` remains first and uncompressed and all other entries are streamed through `Deflater.BEST_COMPRESSION`. Neither transformed FB2 nor transformed EPUB is written as an intermediate file. With recompression disabled, the validated original EPUB is uploaded unchanged.
 

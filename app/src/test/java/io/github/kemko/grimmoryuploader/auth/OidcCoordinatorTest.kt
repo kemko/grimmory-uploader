@@ -21,11 +21,7 @@ class OidcCoordinatorTest {
     fun startsWithServerStateAndExchangesCallbackCode() = runBlocking {
         val server = MockWebServer()
         server.start()
-        server.enqueue(
-            MockResponse().setBody(
-                """{"state":"server-state","authorizationEndpoint":"${server.url("/authorize")}","clientId":"mobile"}""",
-            ),
-        )
+        server.enqueueOidcStart("server-state")
         server.enqueue(MockResponse().setBody("""{"accessToken":"oidc-access","refreshToken":"oidc-refresh","expiresIn":3600}"""))
         try {
             val base = ServerUrl.parse(server.url("/grimmory/").toString())
@@ -47,11 +43,13 @@ class OidcCoordinatorTest {
             assertEquals(Pkce.challenge(authorizationData.codeVerifier), authorizationData.codeChallenge)
             coordinator.handleCallback(state = "server-state", error = null, code = "abc")
             assertEquals("oidc-access", store.read()!!.accessToken)
+            assertTrue(server.takeRequest().path!!.endsWith("/public-settings"))
+            assertEquals("/issuer/.well-known/openid-configuration", server.takeRequest().path)
             assertTrue(server.takeRequest().path!!.endsWith("/auth/oidc/state"))
             val callbackRequest = server.takeRequest()
-            val callbackBody = callbackRequest.body.readUtf8()
-            assertTrue(callbackBody.contains("\"code\":\"abc\""))
-            assertTrue(callbackBody.contains("codeVerifier"))
+            assertEquals("abc", callbackRequest.requestUrl?.queryParameter("code"))
+            assertEquals(authorizationData.codeVerifier, callbackRequest.requestUrl?.queryParameter("code_verifier"))
+            assertEquals(0L, callbackRequest.bodySize)
             coordinator.close()
         } finally {
             server.shutdown()
@@ -67,11 +65,7 @@ class OidcCoordinatorTest {
     fun rejectsInvalidErrorAndReplayedCallbacksWithoutTokenExchange() = runBlocking {
         val server = MockWebServer()
         server.start()
-        server.enqueue(
-            MockResponse().setBody(
-                """{"state":"expected","authorizationEndpoint":"${server.url("/authorize")}","clientId":"mobile"}""",
-            ),
-        )
+        server.enqueueOidcStart("expected")
         try {
             val store = TestTokenStore()
             val base = ServerUrl.parse(server.url("/").toString())
@@ -96,7 +90,7 @@ class OidcCoordinatorTest {
             assertThrows(IllegalStateException::class.java) {
                 runBlocking { coordinator.handleCallback("expected", null, "replay") }
             }
-            assertEquals(1, server.requestCount)
+            assertEquals(3, server.requestCount)
         } finally {
             server.shutdown()
         }
@@ -106,11 +100,7 @@ class OidcCoordinatorTest {
     fun cancellationClearsPendingRequest() = runBlocking {
         val server = MockWebServer()
         server.start()
-        server.enqueue(
-            MockResponse().setBody(
-                """{"state":"expected","authorizationEndpoint":"${server.url("/authorize")}","clientId":"mobile"}""",
-            ),
-        )
+        server.enqueueOidcStart("expected")
         try {
             val store = TestTokenStore()
             val base = ServerUrl.parse(server.url("/").toString())
@@ -134,19 +124,10 @@ class OidcCoordinatorTest {
     }
 
     @Test
-    fun usesDiscoveryFallbackAndRejectsMissingAuthorizationData() = runBlocking {
+    fun usesPublicProviderDetailsAndDiscovery() = runBlocking {
         val server = MockWebServer()
         server.start()
-        server.enqueue(
-            MockResponse().setBody(
-                """{"state":"state","issuer":"${server.url("/issuer")}","clientId":"mobile"}""",
-            ),
-        )
-        server.enqueue(
-            MockResponse().setBody(
-                """{"authorization_endpoint":"${server.url("/authorize")}","token_endpoint":"${server.url("/token")}"}""",
-            ),
-        )
+        server.enqueueOidcStart("state")
         try {
             val store = TestTokenStore()
             val base = ServerUrl.parse(server.url("/").toString())
@@ -160,9 +141,23 @@ class OidcCoordinatorTest {
                 authorizationIntentFactory = { value -> data = value; android.content.Intent("test.oidc") },
             ).start()
             assertEquals(server.url("/authorize").toString(), data.authorizationEndpoint)
-            assertEquals(2, server.requestCount)
+            assertEquals(3, server.requestCount)
         } finally {
             server.shutdown()
         }
+    }
+
+    private fun MockWebServer.enqueueOidcStart(state: String) {
+        enqueue(
+            MockResponse().setBody(
+                """{"oidcEnabled":true,"oidcProviderDetails":{"clientId":"mobile","issuerUri":"${url("/issuer")}"}}""",
+            ),
+        )
+        enqueue(
+            MockResponse().setBody(
+                """{"authorization_endpoint":"${url("/authorize")}","token_endpoint":"${url("/token")}"}""",
+            ),
+        )
+        enqueue(MockResponse().setBody("""{"state":"$state"}"""))
     }
 }

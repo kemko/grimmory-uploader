@@ -26,6 +26,7 @@ class BookTransformer {
     }
 
     private fun copyFb2FromZip(source: File, output: OutputStream, cancelled: () -> Boolean = { false }) {
+        ZipGuards.validateArchiveMetadata(source)
         ZipFile(source).use { zip ->
             val entry = zip.entries().asSequence().filter { !it.isDirectory && it.name.lowercase().endsWith(".fb2") }.singleOrNull()
                 ?: throw UnsupportedBookException("Expected exactly one FB2 entry")
@@ -34,6 +35,7 @@ class BookTransformer {
     }
 
     private fun recompressEpub(source: File, output: OutputStream, cancelled: () -> Boolean = { false }) {
+        ZipGuards.validateArchiveMetadata(source)
         ZipFile(source).use { input ->
             val zipOutput = ZipOutputStream(output).apply { setLevel(Deflater.BEST_COMPRESSION) }
             val mimetype = input.getEntry("mimetype") ?: throw UnsupportedBookException("EPUB mimetype is missing")

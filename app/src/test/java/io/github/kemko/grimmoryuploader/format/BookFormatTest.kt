@@ -125,6 +125,30 @@ class BookFormatTest {
     }
 
     @Test
+    fun rejectsExcessiveEntryCountBeforeOpeningArchive() {
+        val dir = Files.createTempDirectory("zip-metadata").toFile()
+        val archive = zip(dir, "book.zip", listOf("book.fb2" to fb2))
+        val bytes = archive.readBytes()
+        val signature = byteArrayOf(0x50, 0x4b, 0x05, 0x06)
+        val endOffset = (bytes.size - signature.size downTo 0).first { offset ->
+            signature.indices.all { bytes[offset + it] == signature[it] }
+        }
+        bytes[endOffset + 8] = 0xd1.toByte()
+        bytes[endOffset + 9] = 0x07.toByte()
+        bytes[endOffset + 10] = 0xd1.toByte()
+        bytes[endOffset + 11] = 0x07.toByte()
+        archive.writeBytes(bytes)
+
+        val detectionError = assertThrows(IllegalArgumentException::class.java) { detector.detect(archive) }
+        assertEquals("Too many ZIP entries", detectionError.message)
+        val transformError = assertThrows(IllegalArgumentException::class.java) {
+            transformer.transform(archive, BookFormat.FB2_ZIP, ByteArrayOutputStream())
+        }
+        assertEquals("Too many ZIP entries", transformError.message)
+        dir.deleteRecursively()
+    }
+
+    @Test
     fun transformsWithoutCreatingOutputFile() {
         val dir = Files.createTempDirectory("transform").toFile()
         val source = File(dir, "book.fb2").apply { writeText(fb2) }

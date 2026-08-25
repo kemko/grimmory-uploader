@@ -5,6 +5,7 @@ import io.github.kemko.grimmoryuploader.data.auth.AuthRepository
 import io.github.kemko.grimmoryuploader.data.auth.TokenPair
 import io.github.kemko.grimmoryuploader.data.network.GrimmoryApi
 import io.github.kemko.grimmoryuploader.data.network.ServerUrl
+import java.io.IOException
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -74,6 +75,62 @@ class AuthInterceptorTest {
 
             assertEquals(401, error.statusCode)
             assertNull(store.read())
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun transientPreRequestRefreshFailureIsRetryable() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(503))
+        server.start()
+        try {
+            val base = ServerUrl.parse(server.url("/").toString())
+            val store = TestTokenStore().apply {
+                write(TokenPair("expired", "refresh", 0, base.normalized))
+            }
+            val auth = AuthRepository(
+                GrimmoryApi(OkHttpClient(), serverUrl = { base }),
+                store,
+                currentServerUrl = { base.normalized },
+            )
+            val client = OkHttpClient.Builder().addInterceptor(AuthInterceptor(auth) { base }).build()
+
+            org.junit.Assert.assertThrows(IOException::class.java) {
+                runBlocking { GrimmoryApi(client, serverUrl = { base }).currentUser() }
+            }
+
+            assertEquals("/api/v1/auth/refresh", server.takeRequest().path)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun transientPostRequestRefreshFailureIsRetryable() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(401))
+        server.enqueue(MockResponse().setResponseCode(503))
+        server.start()
+        try {
+            val base = ServerUrl.parse(server.url("/").toString())
+            val store = TestTokenStore().apply {
+                write(TokenPair("access", "refresh", Long.MAX_VALUE, base.normalized))
+            }
+            val auth = AuthRepository(
+                GrimmoryApi(OkHttpClient(), serverUrl = { base }),
+                store,
+                currentServerUrl = { base.normalized },
+            )
+            val client = OkHttpClient.Builder().addInterceptor(AuthInterceptor(auth) { base }).build()
+
+            org.junit.Assert.assertThrows(IOException::class.java) {
+                runBlocking { GrimmoryApi(client, serverUrl = { base }).currentUser() }
+            }
+
+            assertEquals("/api/v1/users/me", server.takeRequest().path)
+            assertEquals("/api/v1/auth/refresh", server.takeRequest().path)
         } finally {
             server.shutdown()
         }

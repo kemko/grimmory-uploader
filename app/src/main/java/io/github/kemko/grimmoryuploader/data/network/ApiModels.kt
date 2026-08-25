@@ -3,11 +3,15 @@ package io.github.kemko.grimmoryuploader.data.network
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-@Serializable data class HealthcheckResponse(val status: String? = null)
-
 @Serializable data class PublicSettings(
     val oidcEnabled: Boolean = false,
     val oidcForceOnlyMode: Boolean = false,
+    val oidcProviderDetails: OidcProviderDetails? = null,
+)
+
+@Serializable data class OidcProviderDetails(
+    val clientId: String? = null,
+    val issuerUri: String? = null,
 )
 
 @Serializable data class LoginRequest(val username: String, val password: String)
@@ -26,15 +30,7 @@ import kotlinx.serialization.Serializable
     val email: String? = null,
 )
 
-@Serializable data class UploadResponse(val id: String? = null, val name: String? = null)
-
-@Serializable data class OidcStateResponse(
-    val state: String? = null,
-    val issuer: String? = null,
-    val authorizationEndpoint: String? = null,
-    val clientId: String? = null,
-    val redirectUri: String? = null,
-)
+@Serializable data class OidcStateResponse(val state: String? = null)
 
 @Serializable data class OidcDiscoveryResponse(
     @SerialName("authorization_endpoint") val authorizationEndpoint: String? = null,

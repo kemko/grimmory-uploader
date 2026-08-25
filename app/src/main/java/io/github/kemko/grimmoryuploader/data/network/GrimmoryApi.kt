@@ -13,11 +13,18 @@ import okio.Buffer
 class ApiException(val statusCode: Int, message: String) : IllegalStateException(message)
 
 class GrimmoryApi(
-    private val client: OkHttpClient,
+    client: OkHttpClient,
     private val serverUrl: suspend () -> ServerUrl,
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) {
-    suspend fun healthcheck(): HealthcheckResponse = get("api/v1/healthcheck")
+    private val client = client.newBuilder()
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .build()
+
+    suspend fun healthcheck() = executeSuccess(
+        Request.Builder().url(serverUrl().endpoint("api/v1/healthcheck")).get().build(),
+    )
     suspend fun publicSettings(): PublicSettings = get("api/v1/public-settings")
     suspend fun login(username: String, password: String): TokenResponse =
         post("api/v1/auth/login", LoginRequest(username, password))
@@ -36,8 +43,16 @@ class GrimmoryApi(
         )
     }
 
-    suspend fun oidcCallback(request: OidcCallbackRequest): TokenResponse =
-        post("api/v1/auth/oidc/mobile/callback", request)
+    suspend fun oidcCallback(request: OidcCallbackRequest): TokenResponse {
+        val url = serverUrl().endpoint("api/v1/auth/oidc/mobile/callback").newBuilder()
+            .addQueryParameter("code", request.code)
+            .addQueryParameter("code_verifier", request.codeVerifier)
+            .addQueryParameter("redirect_uri", request.redirectUri)
+            .addQueryParameter("nonce", request.nonce)
+            .addQueryParameter("state", request.state)
+            .build()
+        return executeJson(Request.Builder().url(url).post(ByteArray(0).toRequestBody()).build())
+    }
 
     suspend fun upload(
         libraryId: Int,
@@ -45,7 +60,7 @@ class GrimmoryApi(
         fileName: String,
         contentType: String,
         content: RequestBody,
-    ): UploadResponse {
+    ) {
         require(fileName.isNotBlank() && fileName.none { it == '\u0000' || it == '/' || it == '\\' }) {
             "Unsafe upload file name"
         }
@@ -65,7 +80,7 @@ class GrimmoryApi(
             .addQueryParameter("libraryId", libraryId.toString())
             .addQueryParameter("pathId", pathId.toString())
             .build()
-        return executeJson(Request.Builder().url(url).post(multipart).build())
+        executeSuccess(Request.Builder().url(url).post(multipart).build())
     }
 
     private suspend inline fun <reified T> get(path: String): T = executeJson(
@@ -79,8 +94,15 @@ class GrimmoryApi(
         )
     }
 
-    private suspend inline fun <reified T> executeJson(request: Request): T {
-        return client.newCall(request).await().use { response ->
+    private suspend inline fun <reified T> executeJson(request: Request): T =
+        json.decodeFromString(execute(request))
+
+    private suspend fun executeSuccess(request: Request) {
+        execute(request)
+    }
+
+    private suspend fun execute(request: Request): String =
+        client.newCall(request).await().use { response ->
             val source = response.body.source()
             val buffer = Buffer()
             var remaining = MAX_RESPONSE_BYTES + 1L
@@ -97,9 +119,8 @@ class GrimmoryApi(
             if (!response.isSuccessful) {
                 throw ApiException(response.code, text.take(512).ifBlank { "Grimmory request failed" })
             }
-            json.decodeFromString<T>(text)
+            text
         }
-    }
 
     private companion object {
         const val MAX_RESPONSE_BYTES = 1024 * 1024

@@ -1,7 +1,9 @@
 package io.github.kemko.grimmoryuploader.data.auth
 
 import kotlinx.coroutines.runBlocking
+import io.github.kemko.grimmoryuploader.data.network.ApiException
 import io.github.kemko.grimmoryuploader.data.network.ServerUrl
+import java.io.IOException
 import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
@@ -16,15 +18,24 @@ class AuthInterceptor(
         if (server == null || !isTrusted(original, server)) return chain.proceed(original)
         if (isAuthenticationEndpoint(original.url.encodedPath)) return chain.proceed(original)
 
-        val accessToken = runBlocking { tokens.validAccessToken() }
+        val accessToken = try {
+            runBlocking { tokens.validAccessToken() }
+        } catch (error: ApiException) {
+            if (error.statusCode == 401) null else throw error.asIOException()
+        }
         if (runBlocking { trustedServer() }?.normalized != server.normalized) return chain.proceed(original)
         val authenticated = original.withBearer(accessToken)
         val response = chain.proceed(authenticated)
         if (response.code != 401 || original.header(RETRY_HEADER) != null) return response
 
         val rejected = accessToken ?: return response
-        val refreshed = runCatching { runBlocking { tokens.refresh(rejected) } }.getOrNull()
-            ?: return response
+        val refreshed = try {
+            runBlocking { tokens.refresh(rejected) }
+        } catch (error: ApiException) {
+            if (error.statusCode == 401) return response
+            response.close()
+            throw error.asIOException()
+        } ?: return response
         if (runBlocking { trustedServer() }?.normalized != server.normalized) return response
         response.close()
         return chain.proceed(
@@ -50,6 +61,8 @@ class AuthInterceptor(
         return url.scheme == base.scheme && url.host == base.host && url.port == base.port &&
             (prefix.isEmpty() || url.encodedPath == prefix || url.encodedPath.startsWith("$prefix/"))
     }
+
+    private fun ApiException.asIOException() = IOException("Token refresh failed", this)
 
     private companion object { const val RETRY_HEADER = "X-Grimmory-Auth-Retry" }
 }

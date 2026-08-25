@@ -63,27 +63,28 @@ class OidcCoordinator(
 
     suspend fun start(): Intent {
         val serverUrl = auth.serverUrl()
-        val stateResponse = api.oidcState()
-        val state = stateResponse.state ?: error("Grimmory did not return OIDC state")
-        val discovery = stateResponse.issuer?.let { api.oidcDiscovery(it) }
-        val authorizationEndpoint = stateResponse.authorizationEndpoint
-            ?: discovery?.authorizationEndpoint
+        val provider = api.publicSettings().oidcProviderDetails
+            ?: error("Grimmory did not return OIDC provider details")
+        val issuer = provider.issuerUri ?: error("OIDC issuer is missing")
+        val clientId = provider.clientId ?: error("OIDC client id is missing")
+        val discovery = api.oidcDiscovery(issuer)
+        val authorizationEndpoint = discovery.authorizationEndpoint
             ?: error("OIDC authorization endpoint is missing")
+        val tokenEndpoint = discovery.tokenEndpoint ?: error("OIDC token endpoint is missing")
         requireSecureOidcUrl(authorizationEndpoint)
-        val clientId = stateResponse.clientId ?: error("OIDC client id is missing")
-        val redirect = stateResponse.redirectUri ?: redirectUri
-        check(redirect == redirectUri) { "Grimmory returned an unsupported OIDC redirect URI" }
+        requireSecureOidcUrl(tokenEndpoint)
+        val state = api.oidcState().state ?: error("Grimmory did not return OIDC state")
         val verifier = Pkce.verifier()
         val nonce = Pkce.nonce()
         val challenge = Pkce.challenge(verifier)
         check(auth.serverUrl() == serverUrl) { "Grimmory server changed during OIDC sign-in" }
-        pendingStore.writePendingOidc(OidcPendingRequest(state, verifier, nonce, redirect, serverUrl))
+        pendingStore.writePendingOidc(OidcPendingRequest(state, verifier, nonce, redirectUri, serverUrl))
         authorizationIntentFactory?.let {
             return it(
                 OidcAuthorizationData(
                     authorizationEndpoint,
                     clientId,
-                    redirect,
+                    redirectUri,
                     state,
                     verifier,
                     challenge,
@@ -94,11 +95,11 @@ class OidcCoordinator(
         val request = AuthorizationRequest.Builder(
             AuthorizationServiceConfiguration(
                 Uri.parse(authorizationEndpoint),
-                Uri.parse(discovery?.tokenEndpoint ?: authorizationEndpoint),
+                Uri.parse(tokenEndpoint),
             ),
             clientId,
             ResponseTypeValues.CODE,
-            Uri.parse(redirect),
+            Uri.parse(redirectUri),
         )
             .setState(state)
             .setCodeVerifier(verifier, challenge, "S256")
