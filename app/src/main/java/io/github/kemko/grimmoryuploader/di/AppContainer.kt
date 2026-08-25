@@ -10,8 +10,13 @@ import io.github.kemko.grimmoryuploader.data.auth.EncryptedTokenStore
 import io.github.kemko.grimmoryuploader.data.auth.OidcCoordinator
 import io.github.kemko.grimmoryuploader.data.auth.TokenStore
 import io.github.kemko.grimmoryuploader.data.network.GrimmoryApi
+import io.github.kemko.grimmoryuploader.data.network.ServerUrl
 import io.github.kemko.grimmoryuploader.data.settings.AppSettingsRepository
 import io.github.kemko.grimmoryuploader.upload.StagingStore
+import io.github.kemko.grimmoryuploader.upload.PendingJobReconciler
+import io.github.kemko.grimmoryuploader.upload.TransferNotificationManager
+import io.github.kemko.grimmoryuploader.upload.TransferScheduler
+import io.github.kemko.grimmoryuploader.upload.UploadPipeline
 import io.github.kemko.grimmoryuploader.upload.UploadQueueRepository
 import io.github.kemko.grimmoryuploader.upload.db.UploadDatabase
 import okhttp3.OkHttpClient
@@ -34,6 +39,12 @@ class AppContainer(context: Context) {
 
     private val rawHttpClient: OkHttpClient = OkHttpClient.Builder().build()
 
+    val downloadClient: OkHttpClient = rawHttpClient.newBuilder()
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .retryOnConnectionFailure(false)
+        .build()
+
     private val rawApi: GrimmoryApi = GrimmoryApi(rawHttpClient, serverUrl = {
         settings.requireCleartextConfirmation()
         settings.requireServerUrl()
@@ -53,4 +64,15 @@ class AppContainer(context: Context) {
     val oidc: OidcCoordinator = OidcCoordinator(appContext, api, auth)
 
     val upload: UploadQueueRepository = UploadQueueRepository(database.jobs(), staging)
+
+    val transferNotifications: TransferNotificationManager = TransferNotificationManager(appContext)
+    val transferScheduler: TransferScheduler = TransferScheduler(appContext, upload)
+    val pipeline: UploadPipeline = UploadPipeline(
+        queue = upload,
+        staging = staging,
+        downloadClient = downloadClient,
+        apiFor = { snapshot -> GrimmoryApi(httpClient, serverUrl = { ServerUrl.parse(snapshot) }) },
+        cleartextConfirmed = { url -> settings.isCleartextConfirmed(url) },
+    )
+    val pendingJobReconciler: PendingJobReconciler = PendingJobReconciler(upload, staging)
 }

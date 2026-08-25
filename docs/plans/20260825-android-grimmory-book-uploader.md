@@ -159,16 +159,16 @@ DJVU не поддерживается и не регистрируется ка
 - Create: `app/src/test/**/upload/TransferJobServiceTest.kt`
 - Create: `app/src/test/**/upload/UploadPipelineTest.kt`
 
-- [ ] Планировать видимое пользователю UIDT-задание с network/storage constraints, estimated bytes, persisted extras, exponential backoff и обязательным progress notification.
-- [ ] Для URL выполнять до пяти HTTP(S)-redirects без передачи Grimmory-токена, запрещать смену на небезопасную схему и спрашивать подтверждение перед cleartext download.
-- [ ] Скачивать URL в приватный staging с determinate progress по Content-Length либо indeterminate progress, затем проверять фактический формат до upload.
-- [ ] Передавать файл multipart-потоком в `/api/v1/files/upload` с зафиксированными `libraryId` и `pathId`; отображать отдельные стадии download, validation, recompression и upload.
-- [ ] При отсутствии/истечении access token сначала использовать refresh; при окончательной 401 перевести то же задание в `AWAITING_AUTH` и открыть авторизацию через notification action.
-- [ ] После успешной авторизации повторно запланировать все `AWAITING_AUTH` jobs без потери исходника или ссылки.
-- [ ] На сетевые и системные остановки сохранять состояние и повторять всю передачу; invalid format и серверные 4xx считать окончательными ошибками с понятным уведомлением.
-- [ ] Добавить отмену, очистку staging после terminal state, удаление orphan files и reconciliation прерванных jobs при следующем запуске.
-- [ ] Через MockWebServer проверить download/upload progress, chunked transformed multipart, redirect policy, refresh/retry, auth pause/resume, transient backoff, unsupported format, отмену и cleanup.
-- [ ] Запустить `./gradlew testDebugUnitTest`; все тесты должны пройти до Task 5.
+- [x] Планировать видимое пользователю UIDT-задание с network/storage constraints, estimated bytes, persisted extras, exponential backoff и обязательным progress notification.
+- [x] Для URL выполнять до пяти HTTP(S)-redirects без передачи Grimmory-токена, запрещать смену на небезопасную схему и спрашивать подтверждение перед cleartext download.
+- [x] Скачивать URL в приватный staging с determinate progress по Content-Length либо indeterminate progress, затем проверять фактический формат до upload.
+- [x] Передавать файл multipart-потоком в `/api/v1/files/upload` с зафиксированными `libraryId` и `pathId`; отображать отдельные стадии download, validation, recompression и upload.
+- [x] При отсутствии/истечении access token сначала использовать refresh; при окончательной 401 перевести то же задание в `AWAITING_AUTH` и открыть авторизацию через notification action.
+- [x] После успешной авторизации повторно запланировать все `AWAITING_AUTH` jobs без потери исходника или ссылки.
+- [x] На сетевые и системные остановки сохранять состояние и повторять всю передачу; invalid format и серверные 4xx считать окончательными ошибками с понятным уведомлением.
+- [x] Добавить отмену, очистку staging после terminal state, удаление orphan files и reconciliation прерванных jobs при следующем запуске.
+- [x] Через MockWebServer проверить download/upload progress, chunked transformed multipart, redirect policy, refresh/retry, auth pause/resume, transient backoff, unsupported format, отмену и cleanup.
+- [x] Запустить `./gradlew testDebugUnitTest`; все тесты должны пройти до Task 5.
 
 ### Task 5: Реализовать onboarding, домашний экран, входящие intent и настройки
 

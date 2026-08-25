@@ -7,6 +7,7 @@ import io.github.kemko.grimmoryuploader.share.IncomingInput
 import io.github.kemko.grimmoryuploader.upload.db.UploadJobDao
 import io.github.kemko.grimmoryuploader.upload.db.UploadJobEntity
 import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
+import java.io.File
 import kotlinx.coroutines.flow.Flow
 
 data class UploadSettingsSnapshot(
@@ -54,6 +55,17 @@ class UploadQueueRepository(
             staging.cleanup(current.stagedPath)
         }
     }
+
+    suspend fun attachStagedPath(id: Long, path: String): UploadJobEntity {
+        val current = requireNotNull(dao.find(id)) { "Unknown upload job $id" }
+        val staged = File(path).canonicalFile
+        val root = staging.root
+        require(staged.parentFile == root) { "Staging path escapes pending directory" }
+        val updated = current.copy(stagedPath = staged.absolutePath, updatedAt = System.currentTimeMillis())
+        dao.update(updated)
+        return updated
+    }
+
 
     suspend fun pending() = dao.pending()
     fun observe(states: List<UploadJobState>): Flow<List<UploadJobEntity>> = dao.observe(states)

@@ -91,4 +91,7 @@ class AppSettingsRepository(
             check(value.httpConfirmed) { "Cleartext HTTP requires confirmation" }
         }
     }
+
+    suspend fun isCleartextConfirmed(url: String): Boolean =
+        !ServerUrl.parse(url).isCleartext || current().httpConfirmed
 }

@@ -67,5 +67,12 @@
                 <data android:scheme="file" android:mimeType="application/octet-stream" android:pathSuffix=".pdf" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".upload.TransferJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+        <receiver
+            android:name=".upload.TransferActionReceiver"
+            android:exported="false" />
     </application>
 </manifest>
