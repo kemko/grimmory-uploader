@@ -17,6 +17,12 @@ public interface RoomUploadJobDao {
     @Query("SELECT * FROM upload_jobs WHERE id = :id")
     RoomUploadJobEntity find(long id);
 
+    @Query("SELECT * FROM upload_jobs WHERE serverUrl = :serverUrl")
+    List<RoomUploadJobEntity> byServer(String serverUrl);
+
+    @Query("DELETE FROM upload_jobs WHERE id = :id")
+    void delete(long id);
+
     @Query("SELECT * FROM upload_jobs WHERE state IN ('STAGED', 'AWAITING_AUTH', 'QUEUED', 'RUNNING') ORDER BY createdAt")
     List<RoomUploadJobEntity> pending();
 }

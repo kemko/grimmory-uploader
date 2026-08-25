@@ -66,6 +66,23 @@ class UploadQueueRepository(
         return updated
     }
 
+    suspend fun find(id: Long): UploadJobEntity? = dao.find(id)
+
+    suspend fun cancelForServer(serverUrl: String) {
+        dao.byServer(ServerUrl.parse(serverUrl).normalized).forEach { job ->
+            if (job.state !in setOf(UploadJobState.SUCCEEDED, UploadJobState.FAILED, UploadJobState.CANCELLED)) {
+                staging.cleanup(job.stagedPath)
+                dao.delete(job.id)
+            }
+        }
+    }
+
+    suspend fun retry(id: Long) {
+        val job = requireNotNull(dao.find(id)) { "Unknown upload job $id" }
+        require(job.state == UploadJobState.FAILED) { "Only failed jobs can be retried" }
+        dao.update(job.copy(state = UploadJobState.QUEUED, failureReason = null, updatedAt = System.currentTimeMillis()))
+    }
+
 
     suspend fun pending() = dao.pending()
     fun observe(states: List<UploadJobState>): Flow<List<UploadJobEntity>> = dao.observe(states)

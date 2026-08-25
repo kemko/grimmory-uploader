@@ -54,6 +54,14 @@ class TransferNotificationManager(private val context: Context) {
         builder(jobId, name).setContentText(reason.take(160)).setAutoCancel(true).build(),
     )
 
+    fun showInputFailure(reason: String) = notify(
+        INPUT_FAILURE_ID,
+        builder(INPUT_FAILURE_ID, "Grimmory Uploader")
+            .setContentText(reason.take(160))
+            .setAutoCancel(true)
+            .build(),
+    )
+
     fun showAuthRequired(jobId: Long, name: String) = notify(
         jobId,
         builder(jobId, name)
@@ -108,6 +116,7 @@ class TransferNotificationManager(private val context: Context) {
 
     private companion object {
         const val CHANNEL_ID = "book_transfers"
+        const val INPUT_FAILURE_ID = 1L
         val TransferStage.label: String
             get() = when (this) {
                 TransferStage.DOWNLOAD -> "Downloading"

@@ -9,6 +9,10 @@ interface UploadJobDao {
 
     suspend fun find(id: Long): UploadJobEntity?
 
+    suspend fun byServer(serverUrl: String): List<UploadJobEntity> = emptyList()
+
+    suspend fun delete(id: Long) = Unit
+
     fun observe(states: List<UploadJobState>): Flow<List<UploadJobEntity>>
 
     suspend fun pending(): List<UploadJobEntity>

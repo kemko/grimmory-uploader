@@ -55,6 +55,8 @@ class AuthRepository(
     }
 
     suspend fun accept(tokens: TokenResponse): TokenPair = save(tokens, tokenStore.read())
+    suspend fun healthcheck() = api.healthcheck()
+    suspend fun publicSettings(): PublicSettings = api.publicSettings()
     suspend fun currentUser(): UserResponse = api.currentUser()
     suspend fun logout() = tokenStore.clear()
 

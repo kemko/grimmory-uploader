@@ -24,6 +24,11 @@ class UploadDatabase private constructor(private val database: RoomUploadDatabas
 
         override suspend fun find(id: Long): UploadJobEntity? = dao.find(id)?.toEntity()
 
+        override suspend fun byServer(serverUrl: String): List<UploadJobEntity> =
+            dao.byServer(serverUrl).map(RoomUploadJobEntity::toEntity)
+
+        override suspend fun delete(id: Long) = dao.delete(id)
+
         override fun observe(states: List<UploadJobState>): Flow<List<UploadJobEntity>> = flow {
             emit(dao.pending().map(RoomUploadJobEntity::toEntity).filter { it.state in states })
         }
