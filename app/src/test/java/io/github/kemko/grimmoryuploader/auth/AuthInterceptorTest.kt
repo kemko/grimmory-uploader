@@ -10,6 +10,7 @@ import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class AuthInterceptorTest {
@@ -31,6 +32,31 @@ class AuthInterceptorTest {
             assertEquals("Bearer old", server.takeRequest().getHeader("Authorization"))
             assertEquals("/grimmory/api/v1/auth/refresh", server.takeRequest().path)
             assertEquals("Bearer new", server.takeRequest().getHeader("Authorization"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun refreshFailureClearsCredentialsAndLeavesRequestUnauthorized() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(401))
+        server.enqueue(MockResponse().setResponseCode(401))
+        server.start()
+        try {
+            val store = TestTokenStore().apply {
+                write(TokenPair("old", "refresh", System.currentTimeMillis() + 600_000))
+            }
+            val base = ServerUrl.parse(server.url("/grimmory/").toString())
+            val auth = AuthRepository(GrimmoryApi(OkHttpClient(), serverUrl = { base }), store)
+            val client = OkHttpClient.Builder().addInterceptor(AuthInterceptor(auth)).build()
+
+            val error = org.junit.Assert.assertThrows(io.github.kemko.grimmoryuploader.data.network.ApiException::class.java) {
+                runBlocking { GrimmoryApi(client, serverUrl = { base }).currentUser() }
+            }
+
+            assertEquals(401, error.statusCode)
+            assertNull(store.read())
         } finally {
             server.shutdown()
         }

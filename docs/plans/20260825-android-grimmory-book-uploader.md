@@ -235,15 +235,15 @@ DJVU не поддерживается и не регистрируется ка
 - Modify: `app/src/test/resources/books/**` при необходимости
 - Modify: `Makefile` только если проверка выявит расхождение с CI
 
-- [ ] Запустить `make ci`.
-- [ ] Проверить, что Kover подтверждает минимум 80% line coverage.
-- [ ] Проверить тестами регистрацию `ACTION_SEND` и `ACTION_VIEW` для FB2, FB2.ZIP, EPUB и PDF, регистрацию text URL только для share и отсутствие DJVU.
-- [ ] Проверить тестами auth-valid, refresh-success, refresh-failure-login-resume и OIDC resume flows для обоих способов открытия файла.
-- [ ] Проверить тестами допустимые и недопустимые URL/file formats, FB2.ZIP extraction и EPUB recompression on/off.
-- [ ] Проверить тестами отсутствие преобразованных файлов, очистку staging и восстановление очереди после пересоздания процесса.
-- [ ] Проверить тестами progress, cancel, retry, notification и server-change cleanup.
-- [ ] Запустить `make lint`, `make security`, `make coverage` и `make build` отдельно; результаты должны совпасть с `make ci`.
-- [ ] Проверить `release.yml` через actionlint и выполнить release APK build с временным тестовым keystore без публикации.
+- [x] Запустить `make ci`.
+- [x] Проверить, что Kover подтверждает минимум 80% line coverage.
+- [x] Проверить тестами регистрацию `ACTION_SEND` и `ACTION_VIEW` для FB2, FB2.ZIP, EPUB и PDF, регистрацию text URL только для share и отсутствие DJVU.
+- [x] Проверить тестами auth-valid, refresh-success, refresh-failure-login-resume и OIDC resume flows для обоих способов открытия файла.
+- [x] Проверить тестами допустимые и недопустимые URL/file formats, FB2.ZIP extraction и EPUB recompression on/off.
+- [x] Проверить тестами отсутствие преобразованных файлов, очистку staging и восстановление очереди после пересоздания процесса.
+- [x] Проверить тестами progress, cancel, retry, notification и server-change cleanup.
+- [x] Запустить `make lint`, `make security`, `make coverage` и `make build` отдельно; результаты должны совпасть с `make ci`.
+- [x] Проверить `release.yml` через actionlint и выполнить release APK build с временным тестовым keystore без публикации.
 
 ### Task 8: Update documentation
 

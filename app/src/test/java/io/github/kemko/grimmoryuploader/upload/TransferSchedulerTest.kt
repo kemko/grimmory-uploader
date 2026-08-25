@@ -9,4 +9,5 @@ class TransferSchedulerTest {
         assertTrue(TransferScheduler.stableJobId(42) > 0)
         assertTrue(TransferScheduler.stableJobId(42) == TransferScheduler.stableJobId(42))
     }
+
 }

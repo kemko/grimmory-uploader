@@ -2,6 +2,7 @@ package io.github.kemko.grimmoryuploader.format
 
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.zip.ZipEntry
@@ -44,6 +45,20 @@ class BookFormatTest {
     }
 
     @Test
+    fun detectsPdfFb2AndEpubFromStreams() {
+        val epub = zip(
+            Files.createTempDirectory("stream-epub").toFile(),
+            "book.epub",
+            listOf("mimetype" to "application/epub+zip"),
+            storedFirst = true,
+        ).readBytes()
+
+        assertEquals(BookFormat.PDF, detector.detect(ByteArrayInputStream("%PDF-1.7".toByteArray())))
+        assertEquals(BookFormat.FB2, detector.detect(ByteArrayInputStream(fb2.toByteArray())))
+        assertEquals(BookFormat.EPUB, detector.detect(ByteArrayInputStream(epub)))
+    }
+
+    @Test
     fun rejectsDuplicateAndExternalEntityFb2() {
         val dir = Files.createTempDirectory("invalid").toFile()
         val duplicate = zip(dir, "duplicate.zip", listOf("a.fb2" to fb2, "b.fb2" to fb2))
@@ -80,6 +95,21 @@ class BookFormatTest {
             assertEquals(ZipEntry.DEFLATED, zip.getEntry("OEBPS/content.xhtml").method)
         }
         assertFalse(File(dir, "book.fb2").exists())
+        dir.deleteRecursively()
+    }
+
+    @Test
+    fun extractsFb2ZipAndPassesThroughEpubWhenRecompressionIsDisabled() {
+        val dir = Files.createTempDirectory("transform-options").toFile()
+        val fb2zip = zip(dir, "book.fb2.zip", listOf("nested/book.fb2" to fb2))
+        val fb2Output = ByteArrayOutputStream()
+        transformer.transform(fb2zip, BookFormat.FB2_ZIP, fb2Output)
+        assertArrayEquals(fb2.toByteArray(), fb2Output.toByteArray())
+
+        val epub = zip(dir, "book.epub", listOf("mimetype" to "application/epub+zip", "content" to "body"), storedFirst = true)
+        val epubOutput = ByteArrayOutputStream()
+        transformer.transform(epub, BookFormat.EPUB, epubOutput, recompressEpub = false)
+        assertArrayEquals(epub.readBytes(), epubOutput.toByteArray())
         dir.deleteRecursively()
     }
 

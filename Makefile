@@ -23,7 +23,7 @@ test:
 	$(GRADLEW) testDebugUnitTest
 
 coverage:
-	$(GRADLEW) koverXmlReport koverVerify
+	$(GRADLEW) koverXmlReportDebug koverVerifyDebug
 
 security:
 	$(GRADLEW) --no-configuration-cache --dependency-verification=strict -PdependencyCheckAutoUpdate=$(DEPENDENCY_CHECK_UPDATE) dependencyCheckAnalyze

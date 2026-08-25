@@ -20,4 +20,5 @@ class StagingStoreTest {
         assertThrows(IllegalArgumentException::class.java) { store.cleanup(File(root.parentFile, "outside").absolutePath) }
         root.deleteRecursively()
     }
+
 }
