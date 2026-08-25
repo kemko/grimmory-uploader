@@ -4,8 +4,6 @@ import android.content.Context
 import java.io.File
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
-import androidx.room.Room
-import androidx.room.RoomDatabase
 import io.github.kemko.grimmoryuploader.data.auth.AuthInterceptor
 import io.github.kemko.grimmoryuploader.data.auth.AuthRepository
 import io.github.kemko.grimmoryuploader.data.auth.EncryptedTokenStore
@@ -13,9 +11,10 @@ import io.github.kemko.grimmoryuploader.data.auth.OidcCoordinator
 import io.github.kemko.grimmoryuploader.data.auth.TokenStore
 import io.github.kemko.grimmoryuploader.data.network.GrimmoryApi
 import io.github.kemko.grimmoryuploader.data.settings.AppSettingsRepository
+import io.github.kemko.grimmoryuploader.upload.StagingStore
+import io.github.kemko.grimmoryuploader.upload.UploadQueueRepository
+import io.github.kemko.grimmoryuploader.upload.db.UploadDatabase
 import okhttp3.OkHttpClient
-
-interface UploadComponent
 
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
@@ -24,11 +23,8 @@ class AppContainer(context: Context) {
         File(appContext.filesDir, "settings.preferences_pb")
             .let { file -> androidx.datastore.preferences.core.PreferenceDataStoreFactory.create { file } }
 
-    val database: RoomDatabase = Room.databaseBuilder(
-        appContext,
-        FoundationDatabase::class.java,
-        "grimmory.db",
-    ).build()
+    val database: UploadDatabase = UploadDatabase.create(appContext)
+    val staging: StagingStore = StagingStore(File(appContext.noBackupFilesDir, "pending"))
 
     val tokenStore: TokenStore = EncryptedTokenStore(appContext)
 
@@ -56,5 +52,5 @@ class AppContainer(context: Context) {
 
     val oidc: OidcCoordinator = OidcCoordinator(appContext, api, auth)
 
-    val upload: UploadComponent = object : UploadComponent {}
+    val upload: UploadQueueRepository = UploadQueueRepository(database.jobs(), staging)
 }

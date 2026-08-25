@@ -22,6 +22,50 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/x-fictionbook+xml" />
+                <data android:mimeType="application/xml" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" android:mimeType="application/epub+zip" />
+                <data android:scheme="content" android:mimeType="application/pdf" />
+                <data android:scheme="content" android:mimeType="application/x-fictionbook+xml" />
+                <data android:scheme="content" android:mimeType="application/xml" />
+                <data android:scheme="content" android:mimeType="application/zip" />
+                <data android:scheme="content" android:mimeType="application/octet-stream" />
+                <data android:scheme="file" android:mimeType="application/epub+zip" />
+                <data android:scheme="file" android:mimeType="application/pdf" />
+                <data android:scheme="file" android:mimeType="application/x-fictionbook+xml" />
+                <data android:scheme="file" android:mimeType="application/xml" />
+                <data android:scheme="file" android:mimeType="application/zip" />
+                <data android:scheme="file" android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="application/octet-stream" android:pathSuffix=".fb2" />
+                <data android:scheme="content" android:mimeType="application/octet-stream" android:pathSuffix=".fb2.zip" />
+                <data android:scheme="content" android:mimeType="application/octet-stream" android:pathSuffix=".epub" />
+                <data android:scheme="content" android:mimeType="application/octet-stream" android:pathSuffix=".pdf" />
+                <data android:scheme="file" android:mimeType="application/octet-stream" android:pathSuffix=".fb2" />
+                <data android:scheme="file" android:mimeType="application/octet-stream" android:pathSuffix=".fb2.zip" />
+                <data android:scheme="file" android:mimeType="application/octet-stream" android:pathSuffix=".epub" />
+                <data android:scheme="file" android:mimeType="application/octet-stream" android:pathSuffix=".pdf" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

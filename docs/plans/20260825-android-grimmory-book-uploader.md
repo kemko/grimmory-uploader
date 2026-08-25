@@ -130,19 +130,19 @@ DJVU не поддерживается и не регистрируется ка
 - Create: `app/src/test/**/upload/*`
 - Create: `app/src/test/**/format/*`
 
-- [ ] Зарегистрировать `ACTION_SEND` для EPUB, PDF, FB2/XML, ZIP и generic binary MIME, а также `text/plain` для HTTP(S)-ссылок; не регистрировать DJVU и `ACTION_SEND_MULTIPLE`.
-- [ ] Зарегистрировать `ACTION_VIEW` для «Открыть с помощью» с EPUB, PDF, FB2/XML, ZIP и безопасными generic MIME/suffix-фильтрами для `.fb2`, `.fb2.zip`, `.epub` и `.pdf`; не перехватывать HTTP(S)-ссылки и DJVU.
-- [ ] Принимать ровно один `content://`/`file://` файл из `ACTION_SEND` или `ACTION_VIEW` либо одну HTTP(S)-ссылку из `ACTION_SEND`; безопасно получать и очищать display name, Content-Disposition и URL filename.
-- [ ] До интерактивной авторизации копировать входной URI без изменений в `noBackupFilesDir/pending` и создавать Room-запись с состояниями `STAGED`, `AWAITING_AUTH`, `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`.
-- [ ] Сохранять в задании снимок server URL, library/path IDs и настройки EPUB, чтобы последующая смена настроек не перенаправила уже подтверждённую книгу.
-- [ ] Определять формат по содержимому, а расширение и MIME использовать только как подсказку: `%PDF-`, XML root `FictionBook`, EPUB mimetype entry, один валидный FB2 внутри ZIP.
-- [ ] Отклонять DJVU, обычные ZIP, HTML/error pages, несколько FB2 в архиве, повреждённые XML/ZIP и несовпадение допустимого формата.
-- [ ] Добавить ограничения числа ZIP entries, суммарного распакованного размера, compression ratio, размера имени и глубины пути; не разрешать внешние XML entities.
-- [ ] Для FB2.ZIP после предварительной проверки повторно открыть staging-файл и потоково передать только FB2 entry с именем без `.zip`.
-- [ ] Для EPUB сохранить `mimetype` первым и без compression, остальные entries потоково перепаковать через `Deflater.BEST_COMPRESSION`; при выключенной настройке передавать исходный EPUB.
-- [ ] Гарантировать тестами, что преобразованный FB2/EPUB не создаётся в файловой системе и память не зависит от полного размера книги.
-- [ ] Покрыть тестами `ACTION_SEND`/`ACTION_VIEW` manifest filters, URI/text parsing, Room-переходы, очистку staging, все допустимые форматы, повреждённые/опасные fixtures и максимальное EPUB-сжатие.
-- [ ] Запустить `./gradlew testDebugUnitTest`; все тесты должны пройти до Task 4.
+- [x] Зарегистрировать `ACTION_SEND` для EPUB, PDF, FB2/XML, ZIP и generic binary MIME, а также `text/plain` для HTTP(S)-ссылок; не регистрировать DJVU и `ACTION_SEND_MULTIPLE`.
+- [x] Зарегистрировать `ACTION_VIEW` для «Открыть с помощью» с EPUB, PDF, FB2/XML, ZIP и безопасными generic MIME/suffix-фильтрами для `.fb2`, `.fb2.zip`, `.epub` и `.pdf`; не перехватывать HTTP(S)-ссылки и DJVU.
+- [x] Принимать ровно один `content://`/`file://` файл из `ACTION_SEND` или `ACTION_VIEW` либо одну HTTP(S)-ссылку из `ACTION_SEND`; безопасно получать и очищать display name, Content-Disposition и URL filename.
+- [x] До интерактивной авторизации копировать входной URI без изменений в `noBackupFilesDir/pending` и создавать Room-запись с состояниями `STAGED`, `AWAITING_AUTH`, `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`.
+- [x] Сохранять в задании снимок server URL, library/path IDs и настройки EPUB, чтобы последующая смена настроек не перенаправила уже подтверждённую книгу.
+- [x] Определять формат по содержимому, а расширение и MIME использовать только как подсказку: `%PDF-`, XML root `FictionBook`, EPUB mimetype entry, один валидный FB2 внутри ZIP.
+- [x] Отклонять DJVU, обычные ZIP, HTML/error pages, несколько FB2 в архиве, повреждённые XML/ZIP и несовпадение допустимого формата.
+- [x] Добавить ограничения числа ZIP entries, суммарного распакованного размера, compression ratio, размера имени и глубины пути; не разрешать внешние XML entities.
+- [x] Для FB2.ZIP после предварительной проверки повторно открыть staging-файл и потоково передать только FB2 entry с именем без `.zip`.
+- [x] Для EPUB сохранить `mimetype` первым и без compression, остальные entries потоково перепаковать через `Deflater.BEST_COMPRESSION`; при выключенной настройке передавать исходный EPUB.
+- [x] Гарантировать тестами, что преобразованный FB2/EPUB не создаётся в файловой системе и память не зависит от полного размера книги.
+- [x] Покрыть тестами `ACTION_SEND`/`ACTION_VIEW` manifest filters, URI/text parsing, Room-переходы, очистку staging, все допустимые форматы, повреждённые/опасные fixtures и максимальное EPUB-сжатие.
+- [x] Запустить `./gradlew testDebugUnitTest`; все тесты должны пройти до Task 4.
 
 ### Task 4: Реализовать устойчивую фоновую загрузку и прогресс
 
