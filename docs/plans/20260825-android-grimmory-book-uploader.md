@@ -75,14 +75,14 @@ DJVU не поддерживается и не регистрируется ка
 - Create: `.gitignore`
 - Create: `AGENTS.md`
 
-- [ ] Настроить Kotlin/Compose-приложение с `minSdk 35`, `compileSdk/targetSdk 36`, JVM target 17 и запуском Gradle на JDK 26.
-- [ ] Зафиксировать стабильные версии в version catalog; включить configuration cache, dependency locking и Gradle dependency verification.
-- [ ] Добавить разрешения `INTERNET`, `ACCESS_NETWORK_STATE`, `RUN_USER_INITIATED_JOBS`, `RECEIVE_BOOT_COMPLETED`, `POST_NOTIFICATIONS`; не запрашивать доступ к общему хранилищу.
-- [ ] Создать минимальный `AppContainer` для DataStore, Room, HTTP-клиента, auth и upload-компонентов.
-- [ ] Записать в `AGENTS.md` архитектурные границы, обязательные Make-команды, правила тестирования, безопасности, потоковой обработки и запрет сохранения преобразованных файлов.
-- [ ] Записать в `AGENTS.md`, что любые требующие сети команды должны сразу запускаться с запросом эскалации, поскольку сеть внутри песочницы недоступна.
-- [ ] Добавить smoke-тест создания приложения и базового Compose-экрана.
-- [ ] Запустить `./gradlew testDebugUnitTest assembleDebug`; обе команды должны пройти до Task 2.
+- [x] Настроить Kotlin/Compose-приложение с `minSdk 35`, `compileSdk/targetSdk 36`, JVM target 17 и запуском Gradle на JDK 26.
+- [x] Зафиксировать стабильные версии в version catalog; включить configuration cache, dependency locking и Gradle dependency verification.
+- [x] Добавить разрешения `INTERNET`, `ACCESS_NETWORK_STATE`, `RUN_USER_INITIATED_JOBS`, `RECEIVE_BOOT_COMPLETED`, `POST_NOTIFICATIONS`; не запрашивать доступ к общему хранилищу.
+- [x] Создать минимальный `AppContainer` для DataStore, Room, HTTP-клиента, auth и upload-компонентов.
+- [x] Записать в `AGENTS.md` архитектурные границы, обязательные Make-команды, правила тестирования, безопасности, потоковой обработки и запрет сохранения преобразованных файлов.
+- [x] Записать в `AGENTS.md`, что любые требующие сети команды должны сразу запускаться с запросом эскалации, поскольку сеть внутри песочницы недоступна.
+- [x] Добавить smoke-тест создания приложения и базового Compose-экрана.
+- [x] Запустить `./gradlew testDebugUnitTest assembleDebug`; обе команды должны пройти до Task 2.
 
 ### Task 2: Реализовать серверные настройки и авторизацию Grimmory
 
