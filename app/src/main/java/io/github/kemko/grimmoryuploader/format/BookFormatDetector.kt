@@ -4,6 +4,7 @@ import java.io.BufferedInputStream
 import java.io.File
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
+import java.util.zip.CRC32
 import java.util.zip.ZipFile
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -48,16 +49,26 @@ class BookFormatDetector {
             val entry = enumeration.nextElement()
             entries++
             require(entries <= ZipGuards.MAX_ENTRIES) { "Too many ZIP entries" }
-            val size = entry.size.coerceAtLeast(0)
-            total = Math.addExact(total, size)
-            ZipGuards.validateEntry(entry, entry.compressedSize, total)
-            val lower = entry.name.lowercase()
-            if (firstEntry && entry.name == "mimetype") {
-                val value = zip.getInputStream(entry).use { CancellableInputStream(it, cancelled).readNBytes(64).toString(StandardCharsets.UTF_8).trim() }
-                if (value == "application/epub+zip" && entry.method == java.util.zip.ZipEntry.STORED) epub = true
-            }
-            if (!entry.isDirectory && lower.endsWith(".fb2")) {
-                zip.getInputStream(entry).use { if (isFictionBook(CancellableInputStream(it, cancelled))) fb2Count++ }
+            ZipGuards.validateEntry(entry, entry.compressedSize, Math.addExact(total, entry.size.coerceAtLeast(0)))
+            val limit = ZipGuards.maxReadableBytes(entry.compressedSize, total)
+            zip.getInputStream(entry).use { raw ->
+                val counter = CountingInputStream(CancellableInputStream(raw, cancelled), limit)
+                val content = if (firstEntry && entry.name == "mimetype") counter.readNBytes(64) else null
+                if (!entry.isDirectory && entry.name.lowercase().endsWith(".fb2")) {
+                    require(isFictionBook(counter)) { "FB2 XML is invalid" }
+                    fb2Count++
+                }
+                counter.copyTo(java.io.OutputStream.nullOutputStream(), DEFAULT_BUFFER_SIZE)
+                total = Math.addExact(total, counter.count)
+                ZipGuards.validateActualEntry(entry, entry.compressedSize, counter.count, total)
+                require(entry.crc < 0 || entry.crc == counter.crc) { "ZIP entry checksum is invalid" }
+                if (
+                    firstEntry && entry.name == "mimetype" &&
+                    content?.toString(StandardCharsets.UTF_8)?.trim() == "application/epub+zip" &&
+                    entry.method == ZipEntry.STORED
+                ) {
+                    epub = true
+                }
             }
             firstEntry = false
         }
@@ -82,17 +93,17 @@ class BookFormatDetector {
                 entries++
                 require(entries <= ZipGuards.MAX_ENTRIES) { "Too many ZIP entries" }
                 ZipGuards.validateName(entry.name)
-                val counter = CountingInputStream(zip)
+                val limit = ZipGuards.maxReadableBytes(entry.compressedSize, total)
+                val counter = CountingInputStream(zip, limit)
                 val content = if (firstEntry && entry.name == "mimetype") counter.readNBytes(64) else null
-                if (entry.name.lowercase().endsWith(".fb2")) {
+                if (!entry.isDirectory && entry.name.lowercase().endsWith(".fb2")) {
                     require(isFictionBook(counter)) { "FB2 XML is invalid" }
                     fb2Count++
                 }
                 counter.copyTo(java.io.OutputStream.nullOutputStream(), DEFAULT_BUFFER_SIZE)
                 val entryBytes = counter.count
-                require(entryBytes <= ZipGuards.MAX_ENTRY_SIZE) { "ZIP entry is too large" }
                 total = Math.addExact(total, entryBytes)
-                ZipGuards.validateEntry(entry, entry.compressedSize, total)
+                ZipGuards.validateActualEntry(entry, entry.compressedSize, entryBytes, total)
                 if (firstEntry && entry.name == "mimetype" && content?.toString(StandardCharsets.UTF_8)?.trim() == "application/epub+zip" && entry.method == ZipEntry.STORED) epub = true
                 firstEntry = false
             }
@@ -147,14 +158,31 @@ class BookFormatDetector {
     }
 }
 
-private class CountingInputStream(private val delegate: InputStream) : InputStream() {
+private class CountingInputStream(
+    private val delegate: InputStream,
+    private val maxBytes: Long,
+) : InputStream() {
+    private val checksum = CRC32()
     var count = 0L
         private set
+    val crc: Long get() = checksum.value
 
-    override fun read(): Int = delegate.read().also { if (it >= 0) count++ }
+    override fun read(): Int = delegate.read().also {
+        if (it >= 0) {
+            count++
+            checksum.update(it)
+            require(count <= maxBytes) { "ZIP entry is too large" }
+        }
+    }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
-        delegate.read(buffer, offset, length).also { if (it > 0) count += it }
+        delegate.read(buffer, offset, length).also {
+            if (it > 0) {
+                count += it
+                checksum.update(buffer, offset, it)
+                require(count <= maxBytes) { "ZIP entry is too large" }
+            }
+        }
 }
 
 private class CancellableInputStream(

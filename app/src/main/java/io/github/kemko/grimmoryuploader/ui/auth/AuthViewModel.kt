@@ -12,7 +12,7 @@ class AuthViewModel(private val container: AppContainer) {
     suspend fun isAuthenticated(): Boolean {
         if (auth.validAccessToken() == null) return false
         return try {
-            auth.currentUser()
+            container.api.currentUser()
             true
         } catch (error: io.github.kemko.grimmoryuploader.data.network.ApiException) {
             if (error.statusCode == 401) {

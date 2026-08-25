@@ -20,18 +20,30 @@ class AuthInterceptorTest {
         server.enqueue(MockResponse().setResponseCode(401))
         server.enqueue(MockResponse().setBody("""{"accessToken":"new","refreshToken":"r2","expiresIn":3600}"""))
         server.enqueue(MockResponse().setBody("""{"id":42}"""))
+        server.enqueue(MockResponse().setResponseCode(401))
+        server.enqueue(MockResponse().setBody("""{"accessToken":"newer","refreshToken":"r3","expiresIn":3600}"""))
+        server.enqueue(MockResponse().setBody("""{"id":43}"""))
         server.start()
         try {
             val store = TestTokenStore()
-            store.write(TokenPair("old", "r", System.currentTimeMillis() + 600_000))
             val base = ServerUrl.parse(server.url("/grimmory/").toString())
-            val auth = AuthRepository(GrimmoryApi(OkHttpClient(), serverUrl = { base }), store)
+            store.write(TokenPair("old", "r", System.currentTimeMillis() + 600_000, base.normalized))
+            val auth = AuthRepository(
+                GrimmoryApi(OkHttpClient(), serverUrl = { base }),
+                store,
+                currentServerUrl = { base.normalized },
+            )
             val client = OkHttpClient.Builder().addInterceptor(AuthInterceptor(auth) { base }).build()
-            val user = GrimmoryApi(client, serverUrl = { base }).currentUser()
+            val api = GrimmoryApi(client, serverUrl = { base })
+            val user = api.currentUser()
             assertEquals(42L, user.id)
             assertEquals("Bearer old", server.takeRequest().getHeader("Authorization"))
             assertEquals("/grimmory/api/v1/auth/refresh", server.takeRequest().path)
             assertEquals("Bearer new", server.takeRequest().getHeader("Authorization"))
+            assertEquals(43L, api.currentUser().id)
+            assertEquals("Bearer new", server.takeRequest().getHeader("Authorization"))
+            assertEquals("/grimmory/api/v1/auth/refresh", server.takeRequest().path)
+            assertEquals("Bearer newer", server.takeRequest().getHeader("Authorization"))
         } finally {
             server.shutdown()
         }
@@ -45,10 +57,15 @@ class AuthInterceptorTest {
         server.start()
         try {
             val store = TestTokenStore().apply {
-                write(TokenPair("old", "refresh", System.currentTimeMillis() + 600_000))
+                val serverUrl = ServerUrl.parse(server.url("/grimmory/").toString()).normalized
+                write(TokenPair("old", "refresh", System.currentTimeMillis() + 600_000, serverUrl))
             }
             val base = ServerUrl.parse(server.url("/grimmory/").toString())
-            val auth = AuthRepository(GrimmoryApi(OkHttpClient(), serverUrl = { base }), store)
+            val auth = AuthRepository(
+                GrimmoryApi(OkHttpClient(), serverUrl = { base }),
+                store,
+                currentServerUrl = { base.normalized },
+            )
             val client = OkHttpClient.Builder().addInterceptor(AuthInterceptor(auth) { base }).build()
 
             val error = org.junit.Assert.assertThrows(io.github.kemko.grimmoryuploader.data.network.ApiException::class.java) {
@@ -71,10 +88,21 @@ class AuthInterceptorTest {
         untrusted.start()
         try {
             val store = TestTokenStore().apply {
-                write(TokenPair("secret", "refresh", System.currentTimeMillis() + 600_000))
+                write(
+                    TokenPair(
+                        "secret",
+                        "refresh",
+                        System.currentTimeMillis() + 600_000,
+                        trusted.url("/grimmory/").toString().trimEnd('/'),
+                    ),
+                )
             }
             val trustedBase = ServerUrl.parse(trusted.url("/grimmory/").toString())
-            val auth = AuthRepository(GrimmoryApi(OkHttpClient(), serverUrl = { trustedBase }), store)
+            val auth = AuthRepository(
+                GrimmoryApi(OkHttpClient(), serverUrl = { trustedBase }),
+                store,
+                currentServerUrl = { trustedBase.normalized },
+            )
             val client = OkHttpClient.Builder()
                 .addInterceptor(AuthInterceptor(auth) { trustedBase })
                 .build()

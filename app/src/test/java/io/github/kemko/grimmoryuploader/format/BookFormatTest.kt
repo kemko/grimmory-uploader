@@ -71,6 +71,26 @@ class BookFormatTest {
     }
 
     @Test
+    fun rejectsCorruptNonMimetypeEpubEntry() {
+        val dir = Files.createTempDirectory("corrupt-epub").toFile()
+        val epub = zip(
+            dir,
+            "book.epub",
+            listOf("mimetype" to "application/epub+zip", "OEBPS/content.xhtml" to "unique-payload"),
+            storedFirst = true,
+            storedEntries = setOf("OEBPS/content.xhtml"),
+        )
+        val bytes = epub.readBytes()
+        val payloadIndex = String(bytes, StandardCharsets.ISO_8859_1).indexOf("unique-payload")
+        require(payloadIndex >= 0)
+        bytes[payloadIndex] = (bytes[payloadIndex].toInt() xor 1).toByte()
+        epub.writeBytes(bytes)
+
+        assertThrows(Exception::class.java) { detector.detect(epub) }
+        dir.deleteRecursively()
+    }
+
+    @Test
     fun rejectsZipTraversalAndBombLimitsForFilesAndStreams() {
         listOf(
             "../book.fb2",
@@ -147,12 +167,18 @@ class BookFormatTest {
         dir.deleteRecursively()
     }
 
-    private fun zip(dir: File, name: String, entries: List<Pair<String, String>>, storedFirst: Boolean = false): File {
+    private fun zip(
+        dir: File,
+        name: String,
+        entries: List<Pair<String, String>>,
+        storedFirst: Boolean = false,
+        storedEntries: Set<String> = emptySet(),
+    ): File {
         val file = File(dir, name)
         ZipOutputStream(file.outputStream()).use { zip ->
             entries.forEach { (entryName, value) ->
                 val entry = ZipEntry(entryName)
-                if (storedFirst && entryName == "mimetype") {
+                if (storedFirst && entryName == "mimetype" || entryName in storedEntries) {
                     val bytes = value.toByteArray(StandardCharsets.UTF_8)
                     entry.method = ZipEntry.STORED
                     entry.size = bytes.size.toLong()

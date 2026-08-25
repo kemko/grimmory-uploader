@@ -21,6 +21,10 @@ class TransferScheduler(
         return info.id
     }
 
+    fun ensureScheduled(jobId: Long) {
+        if (scheduler.getPendingJob(stableJobId(jobId)) == null) schedule(jobId)
+    }
+
     fun jobInfo(jobId: Long, estimatedUploadBytes: Long = JobInfo.NETWORK_BYTES_UNKNOWN.toLong(), estimatedDownloadBytes: Long = JobInfo.NETWORK_BYTES_UNKNOWN.toLong()): JobInfo =
         JobInfo.Builder(
             stableJobId(jobId),
@@ -52,5 +56,6 @@ class TransferScheduler(
         const val EXTRA_JOB_ID = "upload_job_id"
 
         fun stableJobId(jobId: Long): Int = (jobId xor (jobId ushr 32)).toInt().coerceAtLeast(1)
+        fun lifecycleNotificationId(jobId: Long): Int = -stableJobId(jobId)
     }
 }

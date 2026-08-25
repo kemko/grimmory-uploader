@@ -15,7 +15,7 @@ class SettingsViewModel(private val container: AppContainer) {
         recompressEpub: Boolean,
         confirmCleartext: Boolean,
         confirmServerChange: Boolean = false,
-    ) {
+    ): Boolean {
         val old = container.settings.current()
         val normalizedNew = io.github.kemko.grimmoryuploader.data.network.ServerUrl.parse(serverUrl).normalized
         require(libraryId > 0) { "libraryId must be positive" }
@@ -37,6 +37,7 @@ class SettingsViewModel(private val container: AppContainer) {
             authMode,
             confirmCleartext,
         )
+        return serverChanged
     }
 }
 

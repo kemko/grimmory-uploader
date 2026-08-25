@@ -83,7 +83,7 @@ class UploadQueueRepository(
         if (current.state !in allowed) return false
         val changed = dao.transition(id, allowed.toList(), state, failureReason, System.currentTimeMillis()) == 1
         if (changed && state in TERMINAL_STATES) {
-            staging.cleanup(current.stagedPath)
+            staging.cleanup(dao.find(id)?.stagedPath ?: current.stagedPath)
         }
         return changed
     }

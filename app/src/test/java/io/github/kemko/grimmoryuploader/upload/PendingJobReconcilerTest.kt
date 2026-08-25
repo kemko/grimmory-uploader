@@ -20,11 +20,18 @@ class PendingJobReconcilerTest {
             IncomingInput.Url("https://example.test/book.fb2", "book.fb2"),
             UploadSettingsSnapshot("https://example.test"),
         )
+        val queued = queue.enqueue(
+            IncomingInput.Url("https://example.test/queued.fb2", "queued.fb2"),
+            UploadSettingsSnapshot("https://example.test"),
+        )
+        queue.transition(queued.id, UploadJobState.QUEUED)
         dao.replace(dao.find(job.id)!!.copy(state = UploadJobState.RUNNING, stagedPath = active.absolutePath))
+        val scheduled = mutableListOf<Long>()
 
-        PendingJobReconciler(queue, StagingStore(root)).reconcile()
+        PendingJobReconciler(queue, StagingStore(root), scheduled::add).reconcile()
 
         assertEquals(UploadJobState.QUEUED, dao.find(job.id)!!.state)
+        assertEquals(listOf(job.id, queued.id), scheduled.sorted())
         assertFalse(orphan.exists())
         assertTrue(active.exists())
         root.deleteRecursively()

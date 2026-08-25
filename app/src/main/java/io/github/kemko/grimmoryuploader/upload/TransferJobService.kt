@@ -24,20 +24,32 @@ class TransferJobService : JobService() {
     override fun onStartJob(params: JobParameters): Boolean {
         val id = params.extras.getLong(TransferScheduler.EXTRA_JOB_ID, -1L)
         if (id < 0) return false
-        val container = (application as GrimmoryUploaderApp).container
+        val app = application as GrimmoryUploaderApp
+        val container = app.container
         lateinit var transfer: RunningTransfer
         val job = scope.launch(start = CoroutineStart.LAZY) {
             var reschedule = false
             try {
+                app.startupReconciliation.await()
                 val queued = container.database.jobs().find(id) ?: return@launch
                 val notifications = container.transferNotifications
-                setNotification(
+                val lifecycleNotificationId = TransferScheduler.lifecycleNotificationId(id)
+                fun showProgress(progress: TransferProgress) = setNotification(
                     params,
-                    TransferScheduler.stableJobId(id),
-                    notifications.progressNotification(id, queued.displayName, TransferProgress(TransferStage.VALIDATION)),
+                    lifecycleNotificationId,
+                    notifications.progressNotification(id, queued.displayName, progress),
                     JOB_END_NOTIFICATION_POLICY_REMOVE,
                 )
-                reschedule = TransferRunner(container.upload, container.pipeline, notifications).run(queued) {
+                showProgress(TransferProgress(TransferStage.VALIDATION))
+                val events = object : TransferEvents {
+                    override fun progress(jobId: Long, name: String, progress: TransferProgress) = showProgress(progress)
+                    override fun success(jobId: Long, name: String) = notifications.success(jobId, name)
+                    override fun authRequired(jobId: Long, name: String) = notifications.authRequired(jobId, name)
+                    override fun cleartextRequired(jobId: Long, name: String) = notifications.cleartextRequired(jobId, name)
+                    override fun failure(jobId: Long, name: String, reason: String) =
+                        notifications.failure(jobId, name, reason)
+                }
+                reschedule = TransferRunner(container.upload, container.pipeline, events).run(queued) {
                     transfer.stopped.get() || !transfer.job.isActive
                 }
             } catch (_: CancellationException) {

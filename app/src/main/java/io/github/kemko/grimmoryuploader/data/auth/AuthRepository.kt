@@ -2,71 +2,81 @@ package io.github.kemko.grimmoryuploader.data.auth
 
 import io.github.kemko.grimmoryuploader.data.network.ApiException
 import io.github.kemko.grimmoryuploader.data.network.GrimmoryApi
+import io.github.kemko.grimmoryuploader.data.network.OidcCallbackRequest
 import io.github.kemko.grimmoryuploader.data.network.PublicSettings
 import io.github.kemko.grimmoryuploader.data.network.TokenResponse
-import io.github.kemko.grimmoryuploader.data.network.UserResponse
 import io.github.kemko.grimmoryuploader.data.settings.AuthMode
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 interface AccessTokenProvider {
-    suspend fun validAccessToken(forceRefresh: Boolean = false): String?
-    suspend fun refresh(force: Boolean = false): TokenPair?
+    suspend fun validAccessToken(): String?
+    suspend fun refresh(rejectedAccessToken: String): TokenPair?
 }
 
 class AuthRepository(
     private val api: GrimmoryApi,
     private val tokenStore: TokenStore,
+    private val currentServerUrl: suspend () -> String,
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
 ) : AccessTokenProvider {
-    private val refreshMutex = Mutex()
+    private val tokenMutex = Mutex()
     private val expirySkewMillis = 30_000L
-    private var lastRefreshedAccessToken: String? = null
 
-    suspend fun login(username: String, password: String): TokenPair =
-        save(api.login(username, password), null)
-
-    override suspend fun validAccessToken(forceRefresh: Boolean): String? {
-        val current = tokenStore.read() ?: return null
-        if (!forceRefresh && current.expiresAtMillis > nowMillis() + expirySkewMillis) {
-            return current.accessToken
-        }
-        return refresh(force = true)?.accessToken
+    suspend fun login(username: String, password: String): TokenPair = tokenMutex.withLock {
+        val serverUrl = currentServerUrl()
+        save(api.login(username, password), null, serverUrl)
     }
 
-    override suspend fun refresh(force: Boolean): TokenPair? = refreshMutex.withLock {
-        val current = tokenStore.read() ?: return@withLock null
-        if (force && current.accessToken == lastRefreshedAccessToken &&
-            current.expiresAtMillis > nowMillis() + expirySkewMillis
-        ) {
-            return@withLock current
+    override suspend fun validAccessToken(): String? {
+        val serverUrl = currentServerUrl()
+        val current = tokenMutex.withLock { tokensFor(serverUrl) } ?: return null
+        if (current.expiresAtMillis > nowMillis() + expirySkewMillis) {
+            return current.accessToken
         }
-        if (!force && current.expiresAtMillis > nowMillis() + expirySkewMillis) {
+        return refresh(current.accessToken)?.accessToken
+    }
+
+    override suspend fun refresh(rejectedAccessToken: String): TokenPair? = tokenMutex.withLock {
+        val serverUrl = currentServerUrl()
+        val current = tokensFor(serverUrl) ?: return@withLock null
+        if (current.accessToken != rejectedAccessToken) {
             return@withLock current
         }
         try {
-            return@withLock save(api.refresh(current.refreshToken), current).also {
-                lastRefreshedAccessToken = it.accessToken
-            }
+            return@withLock save(api.refresh(current.refreshToken), current, serverUrl)
         } catch (error: ApiException) {
             if (error.statusCode == 401) tokenStore.clear()
             throw error
         }
     }
 
-    suspend fun accept(tokens: TokenResponse): TokenPair = save(tokens, tokenStore.read())
+    suspend fun exchangeOidc(serverUrl: String, request: OidcCallbackRequest): TokenPair = tokenMutex.withLock {
+        check(currentServerUrl() == serverUrl) { "Grimmory server changed during OIDC sign-in" }
+        save(api.oidcCallback(request), tokensFor(serverUrl), serverUrl)
+    }
+
+    suspend fun serverUrl(): String = currentServerUrl()
     suspend fun healthcheck() = api.healthcheck()
     suspend fun publicSettings(): PublicSettings = api.publicSettings()
-    suspend fun currentUser(): UserResponse = api.currentUser()
-    suspend fun logout() = tokenStore.clear()
+    suspend fun logout() = tokenMutex.withLock { tokenStore.clear() }
+    suspend fun invalidateForServerChange() = tokenMutex.withLock { tokenStore.clear() }
 
-    private suspend fun save(response: TokenResponse, previous: TokenPair?): TokenPair {
+    private suspend fun tokensFor(serverUrl: String): TokenPair? {
+        val tokens = tokenStore.read() ?: return null
+        if (tokens.serverUrl == serverUrl) return tokens
+        tokenStore.clear()
+        return null
+    }
+
+    private suspend fun save(response: TokenResponse, previous: TokenPair?, serverUrl: String): TokenPair {
+        check(currentServerUrl() == serverUrl) { "Grimmory server changed during authentication" }
         val refreshToken = response.refreshToken ?: previous?.refreshToken
             ?: error("Grimmory response did not contain a refresh token")
         val expiresAt = response.expiresAtMillis ?: response.expiresInSeconds
             ?.let { nowMillis() + it * 1_000L }
             ?: (nowMillis() + 3_600_000L)
-        val tokens = TokenPair(response.accessToken, refreshToken, expiresAt)
+        val tokens = TokenPair(response.accessToken, refreshToken, expiresAt, serverUrl)
         tokenStore.write(tokens)
         return tokens
     }

@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import io.github.kemko.grimmoryuploader.data.auth.AesGcmTokenCipher
 import io.github.kemko.grimmoryuploader.data.auth.TokenPair
@@ -152,7 +153,7 @@ class AppScreensTest {
             container.settings.applyConfiguration("http://one.example", 7, 9, false, AuthMode.OIDC, true)
         }
         compose.setContent {
-            MaterialTheme { SettingsScreen(SettingsViewModel(container), onSaved = {}) }
+            MaterialTheme { SettingsScreen(SettingsViewModel(container), onSaved = { _ -> }) }
         }
 
         compose.waitUntil(5_000) { compose.onAllNodesWithText("Server URL").fetchSemanticsNodes().isNotEmpty() }
@@ -211,7 +212,9 @@ class AppScreensTest {
         try {
             runBlocking {
                 container.settings.applyConfiguration(server.url("/").toString(), 1, 1, true, AuthMode.LOCAL, true)
-                container.tokenStore.write(TokenPair("access", "refresh", Long.MAX_VALUE))
+                container.tokenStore.write(
+                    TokenPair("access", "refresh", Long.MAX_VALUE, server.url("/").toString().trimEnd('/')),
+                )
             }
             server.enqueue(MockResponse().setBody("""{"id":1,"username":"reader"}"""))
             compose.setContent {
@@ -221,6 +224,43 @@ class AppScreensTest {
             compose.onNodeWithText("No transfers").assertIsDisplayed()
         } finally {
             server.shutdown()
+        }
+    }
+
+    @Test
+    fun changingServerRoutesBackToAuthentication() {
+        val first = MockWebServer().apply { start() }
+        val second = MockWebServer().apply { start() }
+        try {
+            val firstUrl = first.url("/").toString().trimEnd('/')
+            val secondUrl = second.url("/").toString().trimEnd('/')
+            runBlocking {
+                container.settings.applyConfiguration(firstUrl, 1, 1, true, AuthMode.LOCAL, true)
+                container.tokenStore.write(TokenPair("access", "refresh", Long.MAX_VALUE, firstUrl))
+            }
+            first.enqueue(MockResponse().setBody("""{"id":1,"username":"reader"}"""))
+            second.enqueue(MockResponse().setBody("""{"oidcEnabled":false}"""))
+            compose.setContent { MaterialTheme { AppNavHost(container) } }
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithText("No transfers").fetchSemanticsNodes().isNotEmpty()
+            }
+
+            compose.onNodeWithText("Settings").performClick()
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithText("Server URL").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("Server URL").performTextReplacement(secondUrl)
+            compose.onNode(hasScrollAction()).performScrollToNode(hasText("Save"))
+            compose.onNodeWithText("Save").performClick()
+            compose.onNodeWithText("Change server").performClick()
+
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithText("Password").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("Password").assertIsDisplayed()
+        } finally {
+            first.shutdown()
+            second.shutdown()
         }
     }
 }

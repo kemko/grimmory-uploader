@@ -86,6 +86,56 @@ class UploadDatabaseTest {
         database.close()
     }
 
+    @Test
+    fun migratesVersionOneJavaSchemaWithoutLosingQueuedJobs() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "upload-v1-${UUID.randomUUID()}.db"
+        context.openOrCreateDatabase(name, Context.MODE_PRIVATE, null).use { versionOne ->
+            versionOne.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `upload_jobs` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `sourceUri` TEXT,
+                    `sourceUrl` TEXT,
+                    `stagedPath` TEXT,
+                    `displayName` TEXT,
+                    `mimeType` TEXT,
+                    `state` TEXT,
+                    `serverUrl` TEXT,
+                    `libraryId` INTEGER NOT NULL,
+                    `pathId` INTEGER NOT NULL,
+                    `recompressEpub` INTEGER NOT NULL,
+                    `failureReason` TEXT,
+                    `createdAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL
+                )
+                """.trimIndent(),
+            )
+            versionOne.execSQL(
+                """
+                INSERT INTO upload_jobs (
+                    sourceUrl, displayName, state, serverUrl, libraryId, pathId,
+                    recompressEpub, createdAt, updatedAt
+                ) VALUES ('https://books.example/book.fb2', 'book.fb2', 'QUEUED',
+                    'https://one.example', 1, 1, 1, 1, 1)
+                """.trimIndent(),
+            )
+            versionOne.version = 1
+        }
+
+        val migrated = Room.databaseBuilder(context, UploadDatabase::class.java, name)
+            .addMigrations(UploadDatabase.MIGRATION_1_2)
+            .build()
+        val job = requireNotNull(migrated.jobs().find(1))
+        assertEquals(UploadJobState.QUEUED, job.state)
+        assertEquals("book.fb2", job.displayName)
+        assertEquals(false, job.serverCleartextConfirmed)
+        assertEquals(-1L, job.progressTotal)
+        migrated.close()
+        context.deleteDatabase(name)
+        Unit
+    }
+
     private fun job(serverUrl: String = "https://one.example") = UploadJobEntity(
         sourceUrl = "https://books.example/book.fb2",
         displayName = "book.fb2",

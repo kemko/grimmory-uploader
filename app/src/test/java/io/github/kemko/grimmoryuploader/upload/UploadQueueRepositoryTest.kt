@@ -94,4 +94,22 @@ class UploadQueueRepositoryTest {
         root.deleteRecursively()
         Unit
     }
+
+    @Test
+    fun terminalTransitionCleansPathAttachedAfterInitialRead() = runBlocking {
+        val root = Files.createTempDirectory("queue-attach-race").toFile()
+        val staged = java.io.File(root, "download.fb2").apply { writeText("book") }
+        val dao = FakeUploadJobDao()
+        val repository = UploadQueueRepository(dao, StagingStore(root))
+        val job = repository.enqueue(
+            IncomingInput.Url("https://example.test/book.fb2", "book.fb2"),
+            UploadSettingsSnapshot("https://example.test"),
+        )
+        dao.attachBeforeNextTransition(staged.absolutePath)
+
+        assertTrue(repository.transition(job.id, UploadJobState.CANCELLED))
+        assertFalse(staged.exists())
+        root.deleteRecursively()
+        Unit
+    }
 }

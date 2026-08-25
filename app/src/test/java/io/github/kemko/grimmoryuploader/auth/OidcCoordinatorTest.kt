@@ -35,7 +35,7 @@ class OidcCoordinatorTest {
             val coordinator = OidcCoordinator(
                 ContextWrapper(null),
                 api,
-                AuthRepository(api, store),
+                AuthRepository(api, store, currentServerUrl = { base.normalized }),
                 store,
                 authorizationIntentFactory = { data ->
                     authorizationData = data
@@ -74,11 +74,12 @@ class OidcCoordinatorTest {
         )
         try {
             val store = TestTokenStore()
-            val api = GrimmoryApi(OkHttpClient(), serverUrl = { ServerUrl.parse(server.url("/").toString()) })
+            val base = ServerUrl.parse(server.url("/").toString())
+            val api = GrimmoryApi(OkHttpClient(), serverUrl = { base })
             val coordinator = OidcCoordinator(
                 ContextWrapper(null),
                 api,
-                AuthRepository(api, store),
+                AuthRepository(api, store, currentServerUrl = { base.normalized }),
                 store,
                 authorizationIntentFactory = { android.content.Intent("test.oidc") },
             )
@@ -112,11 +113,12 @@ class OidcCoordinatorTest {
         )
         try {
             val store = TestTokenStore()
-            val api = GrimmoryApi(OkHttpClient(), serverUrl = { ServerUrl.parse(server.url("/").toString()) })
+            val base = ServerUrl.parse(server.url("/").toString())
+            val api = GrimmoryApi(OkHttpClient(), serverUrl = { base })
             val coordinator = OidcCoordinator(
                 ContextWrapper(null),
                 api,
-                AuthRepository(api, store),
+                AuthRepository(api, store, currentServerUrl = { base.normalized }),
                 store,
                 authorizationIntentFactory = { android.content.Intent("test.oidc") },
             )
@@ -147,12 +149,13 @@ class OidcCoordinatorTest {
         )
         try {
             val store = TestTokenStore()
-            val api = GrimmoryApi(OkHttpClient(), serverUrl = { ServerUrl.parse(server.url("/").toString()) })
+            val base = ServerUrl.parse(server.url("/").toString())
+            val api = GrimmoryApi(OkHttpClient(), serverUrl = { base })
             lateinit var data: io.github.kemko.grimmoryuploader.data.auth.OidcAuthorizationData
             OidcCoordinator(
                 ContextWrapper(null),
                 api,
-                AuthRepository(api, store),
+                AuthRepository(api, store, currentServerUrl = { base.normalized }),
                 store,
                 authorizationIntentFactory = { value -> data = value; android.content.Intent("test.oidc") },
             ).start()

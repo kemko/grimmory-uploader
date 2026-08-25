@@ -70,7 +70,7 @@ class AppViewModelTest {
         assertTrue(unauthenticated.requiresAuth)
         assertEquals(UploadJobState.AWAITING_AUTH, container.upload.find(unauthenticated.job.id)?.state)
 
-        container.tokenStore.write(TokenPair("access", "refresh", Long.MAX_VALUE))
+        container.tokenStore.write(TokenPair("access", "refresh", Long.MAX_VALUE, "https://grimmory.test"))
         var requestedNotification = false
         val authenticated = viewModel.persistAndPrepare(
             IncomingInput.Url("https://books.test/two.fb2", "two.fb2"),
@@ -86,7 +86,7 @@ class AppViewModelTest {
     @Test
     fun homeActionsAndConfirmedServerChangeUpdateOnlyActiveJobs() = runBlocking {
         container.settings.applyConfiguration("https://one.example", 1, 1, true, AuthMode.LOCAL, false)
-        container.tokenStore.write(TokenPair("access", "refresh", Long.MAX_VALUE))
+        container.tokenStore.write(TokenPair("access", "refresh", Long.MAX_VALUE, "https://one.example"))
         val failed = container.upload.enqueue(
             IncomingInput.Url("https://books.test/failed.fb2", "failed.fb2"),
             UploadSettingsSnapshot("https://one.example"),
@@ -120,7 +120,9 @@ class AppViewModelTest {
         assertThrows(IllegalArgumentException::class.java) {
             runBlocking { settings.save("https://two.example", AuthMode.OIDC, 0, 5, false, false, true) }
         }
-        settings.save("https://two.example", AuthMode.OIDC, 4, 5, false, false, confirmServerChange = true)
+        assertTrue(
+            settings.save("https://two.example", AuthMode.OIDC, 4, 5, false, false, confirmServerChange = true),
+        )
         assertEquals("https://two.example", settings.current().serverUrl)
         assertNull(container.upload.find(cleartext.id))
         assertNull(container.tokenStore.read())
@@ -168,7 +170,12 @@ class AppViewModelTest {
         try {
             container.settings.applyConfiguration(server.url("/").toString(), 1, 1, true, AuthMode.LOCAL, true)
             val viewModel = AuthViewModel(container)
-            val tokens = TokenPair("access", "refresh", Long.MAX_VALUE)
+            val tokens = TokenPair(
+                "access",
+                "refresh",
+                Long.MAX_VALUE,
+                server.url("/").toString().trimEnd('/'),
+            )
             container.tokenStore.write(tokens)
             server.enqueue(MockResponse().setResponseCode(503))
             assertThrows(ApiException::class.java) { runBlocking { viewModel.isAuthenticated() } }

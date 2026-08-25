@@ -23,6 +23,7 @@ data class OidcPendingRequest(
     val codeVerifier: String,
     val nonce: String,
     val redirectUri: String,
+    val serverUrl: String,
 )
 
 data class OidcAuthorizationData(
@@ -61,6 +62,7 @@ class OidcCoordinator(
     private val authorizationService = lazy { AuthorizationService(context.applicationContext) }
 
     suspend fun start(): Intent {
+        val serverUrl = auth.serverUrl()
         val stateResponse = api.oidcState()
         val state = stateResponse.state ?: error("Grimmory did not return OIDC state")
         val discovery = stateResponse.issuer?.let { api.oidcDiscovery(it) }
@@ -74,7 +76,8 @@ class OidcCoordinator(
         val verifier = Pkce.verifier()
         val nonce = Pkce.nonce()
         val challenge = Pkce.challenge(verifier)
-        pendingStore.writePendingOidc(OidcPendingRequest(state, verifier, nonce, redirect))
+        check(auth.serverUrl() == serverUrl) { "Grimmory server changed during OIDC sign-in" }
+        pendingStore.writePendingOidc(OidcPendingRequest(state, verifier, nonce, redirect, serverUrl))
         authorizationIntentFactory?.let {
             return it(
                 OidcAuthorizationData(
@@ -133,15 +136,14 @@ class OidcCoordinator(
         try {
             check(error == null) { "OIDC authorization failed: $error" }
             val authorizationCode = code ?: error("OIDC code is missing")
-            auth.accept(
-                api.oidcCallback(
-                    OidcCallbackRequest(
-                        code = authorizationCode,
-                        state = request.state,
-                        redirectUri = request.redirectUri,
-                        codeVerifier = request.codeVerifier,
-                        nonce = request.nonce,
-                    ),
+            auth.exchangeOidc(
+                request.serverUrl,
+                OidcCallbackRequest(
+                    code = authorizationCode,
+                    state = request.state,
+                    redirectUri = request.redirectUri,
+                    codeVerifier = request.codeVerifier,
+                    nonce = request.nonce,
                 ),
             )
         } finally {

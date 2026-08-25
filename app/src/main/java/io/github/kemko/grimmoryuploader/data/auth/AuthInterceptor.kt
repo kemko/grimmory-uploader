@@ -16,12 +16,16 @@ class AuthInterceptor(
         if (server == null || !isTrusted(original, server)) return chain.proceed(original)
         if (isAuthenticationEndpoint(original.url.encodedPath)) return chain.proceed(original)
 
-        val authenticated = original.withBearer(runBlocking { tokens.validAccessToken() })
+        val accessToken = runBlocking { tokens.validAccessToken() }
+        if (runBlocking { trustedServer() }?.normalized != server.normalized) return chain.proceed(original)
+        val authenticated = original.withBearer(accessToken)
         val response = chain.proceed(authenticated)
         if (response.code != 401 || original.header(RETRY_HEADER) != null) return response
 
-        val refreshed = runCatching { runBlocking { tokens.refresh(force = true) } }.getOrNull()
+        val rejected = accessToken ?: return response
+        val refreshed = runCatching { runBlocking { tokens.refresh(rejected) } }.getOrNull()
             ?: return response
+        if (runBlocking { trustedServer() }?.normalized != server.normalized) return response
         response.close()
         return chain.proceed(
             original.withBearer(refreshed.accessToken).newBuilder()

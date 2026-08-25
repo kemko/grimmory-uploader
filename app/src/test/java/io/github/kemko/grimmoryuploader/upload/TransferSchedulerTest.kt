@@ -41,6 +41,8 @@ class TransferSchedulerTest {
         scheduler.cancel(42)
         assertEquals(null, system.getPendingJob(scheduledId))
         assertNotEquals(TransferScheduler.stableJobId(42), TransferScheduler.stableJobId(43))
+        assertTrue(TransferScheduler.lifecycleNotificationId(42) < 0)
+        assertNotEquals(TransferScheduler.stableJobId(42), TransferScheduler.lifecycleNotificationId(42))
         root.deleteRecursively()
     }
 }

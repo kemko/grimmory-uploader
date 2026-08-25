@@ -31,7 +31,11 @@ class OnboardingViewModelTest {
                 },
             )
             val api = GrimmoryApi(OkHttpClient(), { io.github.kemko.grimmoryuploader.data.network.ServerUrl.parse(server.url("/grimmory/").toString()) })
-            val auth = AuthRepository(api, TestTokenStore())
+            val auth = AuthRepository(
+                api,
+                TestTokenStore(),
+                currentServerUrl = { server.url("/grimmory").toString().trimEnd('/') },
+            )
             val viewModel = OnboardingViewModel(settings) {
                 auth.healthcheck()
                 runCatching { auth.publicSettings() }.getOrNull()
@@ -55,7 +59,7 @@ class OnboardingViewModelTest {
             },
         )
         val api = GrimmoryApi(OkHttpClient(), { io.github.kemko.grimmoryuploader.data.network.ServerUrl.parse("https://example.com") })
-        val auth = AuthRepository(api, TestTokenStore())
+        val auth = AuthRepository(api, TestTokenStore(), currentServerUrl = { "https://example.com" })
         val viewModel = OnboardingViewModel(settings) {
             auth.healthcheck()
             runCatching { auth.publicSettings() }.getOrNull()
@@ -80,7 +84,11 @@ class OnboardingViewModelTest {
                 OkHttpClient(),
                 { io.github.kemko.grimmoryuploader.data.network.ServerUrl.parse(server.url("/").toString()) },
             )
-            val auth = AuthRepository(api, TestTokenStore())
+            val auth = AuthRepository(
+                api,
+                TestTokenStore(),
+                currentServerUrl = { server.url("/").toString().trimEnd('/') },
+            )
             val viewModel = OnboardingViewModel(settings) {
                 auth.healthcheck()
                 auth.publicSettings()

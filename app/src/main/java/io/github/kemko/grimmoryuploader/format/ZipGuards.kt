@@ -33,4 +33,26 @@ object ZipGuards {
         }
         require(total <= MAX_TOTAL_UNCOMPRESSED) { "ZIP archive is too large" }
     }
+
+    fun validateActualEntry(entry: ZipEntry, compressedSize: Long, actualSize: Long, total: Long) {
+        validateName(entry.name)
+        require(actualSize <= MAX_ENTRY_SIZE) { "ZIP entry is too large" }
+        require(entry.size < 0 || entry.size == actualSize) { "ZIP entry size is invalid" }
+        if (compressedSize > 0) {
+            require(actualSize.toDouble() / compressedSize <= MAX_COMPRESSION_RATIO.toDouble()) {
+                "ZIP compression ratio is unsafe"
+            }
+        }
+        require(total <= MAX_TOTAL_UNCOMPRESSED) { "ZIP archive is too large" }
+    }
+
+    fun maxReadableBytes(compressedSize: Long, totalBeforeEntry: Long): Long {
+        val ratioLimit = if (compressedSize > 0 && compressedSize <= Long.MAX_VALUE / MAX_COMPRESSION_RATIO) {
+            compressedSize * MAX_COMPRESSION_RATIO
+        } else {
+            Long.MAX_VALUE
+        }
+        return minOf(MAX_ENTRY_SIZE, MAX_TOTAL_UNCOMPRESSED - totalBeforeEntry, ratioLimit)
+            .coerceAtLeast(0)
+    }
 }

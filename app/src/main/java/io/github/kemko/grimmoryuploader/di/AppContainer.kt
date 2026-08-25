@@ -27,6 +27,7 @@ class AppContainer(
     tokenCipher: AesGcmTokenCipher? = null,
 ) {
     private val appContext = context.applicationContext
+    private var authForSettings: AuthRepository? = null
 
     val settingsDataStore: DataStore<Preferences> =
         File(appContext.filesDir, "settings.preferences_pb")
@@ -38,7 +39,8 @@ class AppContainer(
     val tokenStore = EncryptedTokenStore(appContext, tokenCipher = tokenCipher)
 
     val settings: AppSettingsRepository = AppSettingsRepository(settingsDataStore) {
-        tokenStore.clear()
+        checkNotNull(authForSettings).invalidateForServerChange()
+        tokenStore.clearPendingOidc()
     }
 
     private val rawHttpClient: OkHttpClient = OkHttpClient.Builder().build()
@@ -54,7 +56,11 @@ class AppContainer(
         settings.requireServerUrl()
     })
 
-    val auth: AuthRepository = AuthRepository(rawApi, tokenStore)
+    val auth: AuthRepository = AuthRepository(
+        rawApi,
+        tokenStore,
+        currentServerUrl = { settings.requireServerUrl().normalized },
+    ).also { authForSettings = it }
 
     val onboardingProbe: suspend (ServerUrl) -> PublicSettings? = { server ->
         val candidate = GrimmoryApi(rawHttpClient, serverUrl = { server })
@@ -87,5 +93,9 @@ class AppContainer(
         downloadClient = downloadClient,
         apiFor = { snapshot -> GrimmoryApi(httpClient, serverUrl = { ServerUrl.parse(snapshot) }) },
     )
-    val pendingJobReconciler: PendingJobReconciler = PendingJobReconciler(upload, staging)
+    val pendingJobReconciler: PendingJobReconciler = PendingJobReconciler(
+        upload,
+        staging,
+        transferScheduler::ensureScheduled,
+    )
 }

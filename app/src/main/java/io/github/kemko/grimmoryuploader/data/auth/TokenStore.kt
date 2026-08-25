@@ -21,6 +21,7 @@ data class TokenPair(
     val accessToken: String,
     val refreshToken: String,
     val expiresAtMillis: Long,
+    val serverUrl: String? = null,
 )
 
 interface TokenStore {
@@ -40,6 +41,7 @@ private data class StoredTokens(
     val accessToken: String,
     val refreshToken: String,
     val expiresAtMillis: Long,
+    val serverUrl: String? = null,
 )
 
 class AesGcmTokenCipher(private val key: SecretKey) {
@@ -72,12 +74,12 @@ class EncryptedTokenStore(
 
     override suspend fun read(): TokenPair? = withContext(Dispatchers.IO) {
         readEncrypted<StoredTokens>(file)?.let {
-            TokenPair(it.accessToken, it.refreshToken, it.expiresAtMillis)
+            TokenPair(it.accessToken, it.refreshToken, it.expiresAtMillis, it.serverUrl)
         }
     }
 
     override suspend fun write(tokens: TokenPair) = withContext(Dispatchers.IO) {
-        val payload = StoredTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresAtMillis)
+        val payload = StoredTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresAtMillis, tokens.serverUrl)
         writeEncrypted(file, payload)
     }
 

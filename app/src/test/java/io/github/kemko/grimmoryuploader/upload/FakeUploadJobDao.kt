@@ -10,6 +10,7 @@ class FakeUploadJobDao : UploadJobDao {
     private var nextId = 1L
     private val jobs = linkedMapOf<Long, UploadJobEntity>()
     private val values = MutableStateFlow<List<UploadJobEntity>>(emptyList())
+    private var stagedPathBeforeTransition: String? = null
 
     override suspend fun insert(job: UploadJobEntity): Long = synchronized(this) {
         nextId.also { id ->
@@ -47,8 +48,17 @@ class FakeUploadJobDao : UploadJobDao {
         toState: UploadJobState,
         reason: String?,
         updatedAt: Long,
-    ): Int = change(id) { job ->
-        job.takeIf { it.state in fromStates }?.copy(state = toState, failureReason = reason, updatedAt = updatedAt)
+    ): Int {
+        stagedPathBeforeTransition?.let { path ->
+            synchronized(this) {
+                jobs[id] = jobs.getValue(id).copy(stagedPath = path)
+                stagedPathBeforeTransition = null
+            }
+        }
+        return change(id) { job ->
+            job.takeIf { it.state in fromStates }
+                ?.copy(state = toState, failureReason = reason, updatedAt = updatedAt)
+        }
     }
 
     override suspend fun configure(
@@ -97,6 +107,10 @@ class FakeUploadJobDao : UploadJobDao {
             jobs[job.id] = job
             emit()
         }
+    }
+
+    fun attachBeforeNextTransition(path: String) {
+        stagedPathBeforeTransition = path
     }
 
     private inline fun change(id: Long, transform: (UploadJobEntity) -> UploadJobEntity?): Int = synchronized(this) {

@@ -111,6 +111,37 @@ class UploadPipelineTest {
     }
 
     @Test
+    fun lateDownloadAttachmentAfterCancellationRemovesStaging() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody(fb2()))
+        server.start()
+        val root = Files.createTempDirectory("pipeline-attach-race").toFile()
+        try {
+            val dao = FakeUploadJobDao()
+            val staging = StagingStore(root)
+            val queue = UploadQueueRepository(dao, staging)
+            val job = queue.enqueue(
+                IncomingInput.Url(server.url("/book.fb2").toString(), "book.fb2"),
+                UploadSettingsSnapshot(server.url("/grimmory").toString(), serverCleartextConfirmed = true),
+            )
+            val staleRunningJob = job.copy(sourceCleartextConfirmed = true)
+            queue.transition(job.id, UploadJobState.CANCELLED)
+            val pipeline = UploadPipeline(
+                queue,
+                staging,
+                OkHttpClient(),
+                { snapshot -> GrimmoryApi(OkHttpClient(), serverUrl = { ServerUrl.parse(snapshot) }) },
+            )
+
+            assertTrue(pipeline.execute(staleRunningJob) is PipelineResult.Failed)
+            assertFalse(root.listFiles().orEmpty().any { it.isFile })
+        } finally {
+            server.shutdown()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun cleartextDownloadWaitsForConfirmation() = runBlocking {
         val server = MockWebServer()
         server.enqueue(MockResponse().setBody(fb2()))

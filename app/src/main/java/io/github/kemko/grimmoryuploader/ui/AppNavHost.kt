@@ -162,7 +162,16 @@ fun AppNavHost(
         )
         Destination.SETTINGS -> SettingsScreen(
             viewModel = remember { SettingsViewModel(container) },
-            onSaved = { destination = Destination.HOME },
+            onSaved = { serverChanged ->
+                if (serverChanged) {
+                    scope.launch {
+                        authDecision = authViewModel.modeDecision()
+                        destination = Destination.AUTH
+                    }
+                } else {
+                    destination = Destination.HOME
+                }
+            },
         )
         Destination.ERROR -> ErrorScreen(
             message = incomingError ?: "Unable to open book",
@@ -298,7 +307,7 @@ fun HomeScreen(
 }
 
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel, onSaved: () -> Unit) {
+fun SettingsScreen(viewModel: SettingsViewModel, onSaved: (Boolean) -> Unit) {
     var loaded by remember { mutableStateOf(false) }
     var url by remember { mutableStateOf("") }
     var libraryId by remember { mutableStateOf("1") }
@@ -333,7 +342,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onSaved: () -> Unit) {
                     }
                     runCatching { viewModel.save(url, mode, library, path, recompress, httpConfirmed) }
                         .fold(
-                            { onSaved() },
+                            onSaved,
                             {
                                 if (it === ServerChangeConfirmationRequired) confirmServerChange = true
                                 else error = it.message
@@ -356,7 +365,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onSaved: () -> Unit) {
                         val path = pathId.toIntOrNull() ?: return@launch
                         runCatching {
                             viewModel.save(url, mode, library, path, recompress, httpConfirmed, confirmServerChange = true)
-                        }.fold({ onSaved() }, { error = it.message })
+                        }.fold(onSaved, { error = it.message })
                     }
                 }) { Text("Change server") }
             },

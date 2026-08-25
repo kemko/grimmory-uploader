@@ -181,6 +181,9 @@ class UploadPipeline(
         } catch (error: IOException) {
             target.delete()
             throw DownloadRetry(error.message ?: "Network transfer failed")
+        } catch (error: Throwable) {
+            target.delete()
+            throw error
         }
     }
 

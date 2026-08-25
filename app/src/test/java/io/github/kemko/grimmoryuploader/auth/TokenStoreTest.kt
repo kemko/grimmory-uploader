@@ -40,7 +40,13 @@ class TokenStoreTest {
         val cipher = AesGcmTokenCipher(key)
         val store = EncryptedTokenStore(context, tokenCipher = cipher)
         val tokens = TokenPair("access-secret", "refresh-secret", 42)
-        val pending = OidcPendingRequest("state", "verifier", "nonce", "app:/callback")
+        val pending = OidcPendingRequest(
+            "state",
+            "verifier",
+            "nonce",
+            "app:/callback",
+            "https://one.example",
+        )
 
         store.write(tokens)
         store.writePendingOidc(pending)
