@@ -18,10 +18,19 @@ import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
 import java.io.File
 import java.security.SecureRandom
 import javax.crypto.spec.SecretKeySpec
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.Dispatcher as MockDispatcher
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -118,6 +127,42 @@ class AppViewModelTest {
             server.shutdown()
         }
         Unit
+    }
+
+    @Test
+    fun concurrentUnauthorizedRequestsRefreshWithoutDispatcherDeadlock() = runBlocking {
+        val server = MockWebServer()
+        val initialRequests = CountDownLatch(5)
+        val refreshes = AtomicInteger()
+        server.dispatcher = object : MockDispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when {
+                request.path?.endsWith("/auth/refresh") == true -> {
+                    refreshes.incrementAndGet()
+                    MockResponse().setBody("""{"accessToken":"new","refreshToken":"r2","expires":3600}""")
+                }
+                request.getHeader("Authorization") == "Bearer old" -> {
+                    initialRequests.countDown()
+                    check(initialRequests.await(5, TimeUnit.SECONDS))
+                    MockResponse().setResponseCode(401)
+                }
+                else -> MockResponse().setBody("""{"id":1,"username":"reader"}""")
+            }
+        }
+        server.start()
+        try {
+            val serverUrl = server.url("/").toString().trimEnd('/')
+            container.settings.applyConfiguration(serverUrl, 1, 1, true, AuthMode.LOCAL, true)
+            container.tokenStore.write(TokenPair("old", "refresh", Long.MAX_VALUE, serverUrl))
+
+            val users = withTimeout(10_000) {
+                List(5) { async(Dispatchers.IO) { container.api.currentUser().id } }.awaitAll()
+            }
+
+            assertEquals(List(5) { 1L }, users)
+            assertEquals(1, refreshes.get())
+        } finally {
+            server.shutdown()
+        }
     }
 
     @Test

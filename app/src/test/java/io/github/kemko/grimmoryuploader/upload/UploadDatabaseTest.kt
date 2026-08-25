@@ -71,6 +71,7 @@ class UploadDatabaseTest {
             1,
             database.jobs().configure(id, "https://one.example", 7, 9, false, false, 2),
         )
+        assertEquals(id, database.jobs().pendingIntake()?.id)
         assertEquals(
             1,
             database.jobs().transition(

@@ -31,6 +31,7 @@ import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
 import java.io.File
 import java.security.SecureRandom
 import javax.crypto.spec.SecretKeySpec
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -224,6 +225,45 @@ class AppScreensTest {
             }
             compose.waitUntil(5_000) { compose.onAllNodesWithText("No transfers").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("No transfers").assertIsDisplayed()
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun activeIncomingFailureRoutesToFullScreenError() {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val serverUrl = server.url("/").toString().trimEnd('/')
+            runBlocking {
+                container.settings.applyConfiguration(serverUrl, 1, 1, true, AuthMode.LOCAL, true)
+                container.tokenStore.write(TokenPair("access", "refresh", Long.MAX_VALUE, serverUrl))
+            }
+            server.enqueue(MockResponse().setBody("""{"id":1,"username":"reader"}"""))
+            val source = File(context.cacheDir, "unsupported.djvu").apply { writeText("AT&TFORM") }
+            compose.setContent {
+                MaterialTheme {
+                    AppNavHost(
+                        container,
+                        launchIntent = Intent(Intent.ACTION_VIEW)
+                            .setDataAndType(Uri.fromFile(source), "application/octet-stream"),
+                    )
+                }
+            }
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithText("unsupported.djvu").fetchSemanticsNodes().isNotEmpty()
+            }
+            val job = runBlocking { container.upload.observeAll().first().single() }
+            runBlocking {
+                container.upload.transition(job.id, UploadJobState.RUNNING)
+                container.upload.transition(job.id, UploadJobState.FAILED, "DJVU is not supported")
+            }
+
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithText("Something went wrong").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("DJVU is not supported").assertIsDisplayed()
         } finally {
             server.shutdown()
         }

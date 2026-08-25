@@ -51,7 +51,9 @@ import io.github.kemko.grimmoryuploader.ui.settings.SettingsViewModel
 import io.github.kemko.grimmoryuploader.ui.settings.ServerChangeConfirmationRequired
 import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
 import io.github.kemko.grimmoryuploader.upload.TransferStage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private enum class Destination { LOADING, ONBOARDING, AUTH, HOME, SETTINGS, ERROR }
 
@@ -75,6 +77,8 @@ fun AppNavHost(
     var hasConfiguredServer by remember { mutableStateOf(false) }
     val incomingViewModel = remember { IncomingBookViewModel(container) }
     val authViewModel = remember { AuthViewModel(container) }
+    val jobs by container.upload.observeAll().collectAsState(initial = emptyList())
+    val pendingJob = jobs.firstOrNull { it.id == pendingJobId }
 
     suspend fun preparePending(id: Long) {
         incomingViewModel.prepare(id, requestNotificationPermission).fold(
@@ -95,8 +99,10 @@ fun AppNavHost(
 
     LaunchedEffect(launchIntent, refreshKey) {
         if (launchIntent != null && launchIntent.action != Intent.ACTION_MAIN) {
-            val persisted = runCatching { IncomingIntentParser(context.contentResolver).parse(launchIntent) }
-                .mapCatching { input -> incomingViewModel.persist(input, context.contentResolver).getOrThrow() }
+            val persisted = withContext(Dispatchers.IO) {
+                runCatching { IncomingIntentParser(context.contentResolver).parse(launchIntent) }
+                    .mapCatching { input -> incomingViewModel.persist(input, context.contentResolver).getOrThrow() }
+            }
             onLaunchIntentConsumed()
             persisted.fold(
                 onSuccess = { pendingJobId = it.id },
@@ -130,6 +136,14 @@ fun AppNavHost(
                     destination = Destination.ERROR
                 },
             )
+        }
+    }
+
+    LaunchedEffect(destination, pendingJob?.state, pendingJob?.failureReason) {
+        if (destination == Destination.HOME && pendingJob?.state == UploadJobState.FAILED) {
+            incomingError = pendingJob.failureReason ?: "Upload failed"
+            pendingJobId = null
+            destination = Destination.ERROR
         }
     }
 

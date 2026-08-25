@@ -25,7 +25,7 @@ interface UploadJobDao {
     @Query("SELECT * FROM upload_jobs WHERE state IN ('STAGED', 'AWAITING_AUTH', 'AWAITING_CLEARTEXT', 'QUEUED', 'RUNNING') ORDER BY createdAt")
     suspend fun pending(): List<UploadJobEntity>
 
-    @Query("SELECT * FROM upload_jobs WHERE serverUrl = '' AND state = 'STAGED' ORDER BY createdAt LIMIT 1")
+    @Query("SELECT * FROM upload_jobs WHERE state = 'STAGED' ORDER BY createdAt LIMIT 1")
     suspend fun pendingIntake(): UploadJobEntity?
 
     @Query("UPDATE upload_jobs SET state = :toState, failureReason = :reason, updatedAt = :updatedAt WHERE id = :id AND state IN (:fromStates)")

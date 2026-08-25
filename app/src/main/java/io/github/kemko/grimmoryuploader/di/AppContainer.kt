@@ -44,6 +44,7 @@ class AppContainer(
     }
 
     private val rawHttpClient: OkHttpClient = OkHttpClient.Builder().build()
+    private val authHttpClient: OkHttpClient = OkHttpClient.Builder().build()
 
     val downloadClient: OkHttpClient = rawHttpClient.newBuilder()
         .followRedirects(false)
@@ -51,7 +52,7 @@ class AppContainer(
         .retryOnConnectionFailure(false)
         .build()
 
-    private val rawApi: GrimmoryApi = GrimmoryApi(rawHttpClient, serverUrl = {
+    private val rawApi: GrimmoryApi = GrimmoryApi(authHttpClient, serverUrl = {
         settings.requireCleartextConfirmation()
         settings.requireServerUrl()
     })

@@ -41,7 +41,7 @@ class FakeUploadJobDao : UploadJobDao {
     }
 
     override suspend fun pendingIntake(): UploadJobEntity? = synchronized(this) {
-        jobs.values.firstOrNull { it.serverUrl.isBlank() && it.state == UploadJobState.STAGED }
+        jobs.values.firstOrNull { it.state == UploadJobState.STAGED }
     }
 
     override suspend fun transition(
