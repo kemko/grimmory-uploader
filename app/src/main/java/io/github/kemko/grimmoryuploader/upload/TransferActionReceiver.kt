@@ -26,6 +26,17 @@ class TransferActionReceiver : BroadcastReceiver() {
                     }
                 }
             }
+            ACTION_CONFIRM_HTTP -> {
+                goAsync().also { result ->
+                    CoroutineScope(Dispatchers.IO).launch {
+                        runCatching {
+                            app.container.upload.confirmSourceCleartext(jobId)
+                            app.container.transferScheduler.schedule(jobId)
+                        }
+                        result.finish()
+                    }
+                }
+            }
             ACTION_AUTH, ACTION_OPEN -> {
                 context.startActivity(
                     Intent(context, MainActivity::class.java)
@@ -42,5 +53,6 @@ class TransferActionReceiver : BroadcastReceiver() {
         const val ACTION_CANCEL = "io.github.kemko.grimmoryuploader.action.CANCEL"
         const val ACTION_AUTH = "io.github.kemko.grimmoryuploader.action.AUTH"
         const val ACTION_OPEN = "io.github.kemko.grimmoryuploader.action.OPEN"
+        const val ACTION_CONFIRM_HTTP = "io.github.kemko.grimmoryuploader.action.CONFIRM_HTTP"
     }
 }

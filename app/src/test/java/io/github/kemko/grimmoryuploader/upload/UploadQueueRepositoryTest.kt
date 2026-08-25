@@ -1,13 +1,10 @@
 package io.github.kemko.grimmoryuploader.upload
 
 import io.github.kemko.grimmoryuploader.share.IncomingInput
-import io.github.kemko.grimmoryuploader.upload.db.UploadJobDao
-import io.github.kemko.grimmoryuploader.upload.db.UploadJobEntity
 import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
 import java.nio.file.Files
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -17,7 +14,7 @@ class UploadQueueRepositoryTest {
     @Test
     fun snapshotsSettingsAndCleansTerminalJob() {
         runBlocking {
-        val dao = FakeDao()
+        val dao = FakeUploadJobDao()
         val root = Files.createTempDirectory("queue").toFile()
         val repository = UploadQueueRepository(dao, StagingStore(root))
         val job = repository.enqueue(
@@ -28,6 +25,8 @@ class UploadQueueRepositoryTest {
         assertEquals(7L, job.libraryId)
         assertEquals(9L, job.pathId)
         assertTrue(!job.recompressEpub)
+        repository.transition(job.id, UploadJobState.QUEUED)
+        repository.transition(job.id, UploadJobState.RUNNING)
         repository.transition(job.id, UploadJobState.SUCCEEDED)
         assertEquals(UploadJobState.SUCCEEDED, dao.find(job.id)!!.state)
         root.deleteRecursively()
@@ -39,13 +38,13 @@ class UploadQueueRepositoryTest {
         runBlocking {
             val root = Files.createTempDirectory("queue-server").toFile()
             val staged = java.io.File(root, "book.fb2").apply { writeText("book") }
-            val dao = FakeDao()
+            val dao = FakeUploadJobDao()
             val repository = UploadQueueRepository(dao, StagingStore(root))
             val job = repository.enqueue(
                 IncomingInput.Url("https://example.test/book.fb2", "book.fb2"),
                 UploadSettingsSnapshot("https://example.test"),
             )
-            dao.update(dao.find(job.id)!!.copy(stagedPath = staged.absolutePath))
+            dao.replace(dao.find(job.id)!!.copy(stagedPath = staged.absolutePath))
 
             repository.cancelForServer("https://example.test/")
 
@@ -59,12 +58,14 @@ class UploadQueueRepositoryTest {
     fun retriesFailedJobAndRejectsRetryForOtherStates() {
         runBlocking {
             val root = Files.createTempDirectory("queue-retry").toFile()
-            val dao = FakeDao()
+            val dao = FakeUploadJobDao()
             val repository = UploadQueueRepository(dao, StagingStore(root))
             val job = repository.enqueue(
                 IncomingInput.Url("https://example.test/book.fb2", "book.fb2"),
                 UploadSettingsSnapshot("https://example.test"),
             )
+            repository.transition(job.id, UploadJobState.QUEUED)
+            repository.transition(job.id, UploadJobState.RUNNING)
             repository.transition(job.id, UploadJobState.FAILED, "temporary")
             repository.retry(job.id)
             assertEquals(UploadJobState.QUEUED, dao.find(job.id)!!.state)
@@ -75,16 +76,22 @@ class UploadQueueRepositoryTest {
         }
     }
 
-    private class FakeDao : UploadJobDao {
-        private var nextId = 1L
-        private val jobs = linkedMapOf<Long, UploadJobEntity>()
-        override suspend fun insert(job: UploadJobEntity): Long = nextId.also { jobs[it] = job.copy(id = it); nextId++ }
-        override suspend fun update(job: UploadJobEntity) { jobs[job.id] = job }
-        override suspend fun find(id: Long): UploadJobEntity? = jobs[id]
-        override suspend fun byServer(serverUrl: String): List<UploadJobEntity> =
-            jobs.values.filter { it.serverUrl == serverUrl }
-        override suspend fun delete(id: Long) { jobs.remove(id) }
-        override fun observe(states: List<UploadJobState>): Flow<List<UploadJobEntity>> = flowOf(jobs.values.filter { it.state in states })
-        override suspend fun pending(): List<UploadJobEntity> = jobs.values.filter { it.state in setOf(UploadJobState.STAGED, UploadJobState.AWAITING_AUTH, UploadJobState.QUEUED, UploadJobState.RUNNING) }
+    @Test
+    fun terminalStateCannotBeOverwrittenByLateCompletion() = runBlocking {
+        val root = Files.createTempDirectory("queue-race").toFile()
+        val dao = FakeUploadJobDao()
+        val repository = UploadQueueRepository(dao, StagingStore(root))
+        val job = repository.enqueue(
+            IncomingInput.Url("https://example.test/book.fb2", "book.fb2"),
+            UploadSettingsSnapshot("https://example.test"),
+        )
+        repository.transition(job.id, UploadJobState.QUEUED)
+        repository.transition(job.id, UploadJobState.RUNNING)
+        assertTrue(repository.transition(job.id, UploadJobState.CANCELLED))
+        assertFalse(repository.transition(job.id, UploadJobState.SUCCEEDED))
+        assertEquals(UploadJobState.CANCELLED, dao.find(job.id)?.state)
+        assertEquals(UploadJobState.CANCELLED, repository.observeAll().first().single().state)
+        root.deleteRecursively()
+        Unit
     }
 }

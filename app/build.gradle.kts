@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.kover)
     alias(libs.plugins.ktlint)
     alias(libs.plugins.dependency.check)
+    alias(libs.plugins.ksp)
 }
 
 val appVersionName = rootProject.extra["appVersionName"] as String
@@ -69,6 +70,10 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
@@ -89,24 +94,7 @@ kover {
                     "**.R",
                     "**.R$*",
                     "**.ComposableSingletons$*",
-                    "**.ui.AppNavHostKt$*",
-                    "**.di.FoundationDatabase",
-                    "**.di.FoundationDatabase$*",
-                    "**.di.FoundationDatabase_Impl*",
-                    "**.di.FoundationRecord*",
-                    "**.upload.db.RoomUpload*",
-                    "**.upload.db.UploadDatabase*",
-                    "**.upload.db.UploadJobDao*",
-                    "**.ui.AppNavHostKt*",
-                    "**.ui.auth.OidcRedirectActivity*",
-                    "**.di.AppContainer*",
-                    "**.GrimmoryUploaderApp*",
-                    "**.MainActivity*",
-                    "**.upload.TransferActionReceiver*",
-                    "**.upload.TransferJobService*",
-                    "**.upload.TransferNotificationManager*",
-                    "**.upload.TransferScheduler*",
-                    "**.data.auth.EncryptedTokenStore*",
+                    "**.*_Impl*",
                 )
             }
         }
@@ -124,6 +112,9 @@ dependencyCheck {
     failOnError = true
     formats = listOf("HTML", "SARIF")
     suppressionFile = rootProject.file("config/dependency-check-suppressions.xml").absolutePath
+    nvd {
+        apiKey = providers.environmentVariable("NVD_API_KEY").orNull
+    }
     hostedSuppressions {
         enabled = false
     }
@@ -155,7 +146,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
-    annotationProcessor(libs.androidx.room.compiler)
+    ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.okhttp)
     implementation(libs.appauth)
@@ -165,8 +156,13 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
+    testRuntimeOnly(libs.asm.commons)
     testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.room.testing)
     testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.okhttp.tls)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

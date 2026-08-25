@@ -29,7 +29,10 @@ class TransferScheduler(
             .setUserInitiated(true)
             .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
             .setRequiresStorageNotLow(true)
-            .setEstimatedNetworkBytes(estimatedUploadBytes.coerceAtLeast(JobInfo.NETWORK_BYTES_UNKNOWN.toLong()), estimatedDownloadBytes.coerceAtLeast(JobInfo.NETWORK_BYTES_UNKNOWN.toLong()))
+            .setEstimatedNetworkBytes(
+                estimatedDownloadBytes.coerceAtLeast(JobInfo.NETWORK_BYTES_UNKNOWN.toLong()),
+                estimatedUploadBytes.coerceAtLeast(JobInfo.NETWORK_BYTES_UNKNOWN.toLong()),
+            )
             .setBackoffCriteria(30_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
             .setPersisted(true)
             .setExtras(PersistableBundle().apply { putLong(EXTRA_JOB_ID, jobId) })
@@ -40,7 +43,9 @@ class TransferScheduler(
     }
 
     suspend fun resumeAwaitingAuth() {
-        queue.pending().filter { it.state == UploadJobState.AWAITING_AUTH }.forEach { schedule(it.id) }
+        queue.pending().filter { it.state == UploadJobState.AWAITING_AUTH }.forEach {
+            if (queue.transition(it.id, UploadJobState.QUEUED)) schedule(it.id)
+        }
     }
 
     companion object {

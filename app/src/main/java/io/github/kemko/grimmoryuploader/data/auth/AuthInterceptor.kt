@@ -1,13 +1,19 @@
 package io.github.kemko.grimmoryuploader.data.auth
 
 import kotlinx.coroutines.runBlocking
+import io.github.kemko.grimmoryuploader.data.network.ServerUrl
 import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
 
-class AuthInterceptor(private val tokens: AccessTokenProvider) : Interceptor {
+class AuthInterceptor(
+    private val tokens: AccessTokenProvider,
+    private val trustedServer: suspend () -> ServerUrl?,
+) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
+        val server = runBlocking { trustedServer() }
+        if (server == null || !isTrusted(original, server)) return chain.proceed(original)
         if (isAuthenticationEndpoint(original.url.encodedPath)) return chain.proceed(original)
 
         val authenticated = original.withBearer(runBlocking { tokens.validAccessToken() })
@@ -32,6 +38,14 @@ class AuthInterceptor(private val tokens: AccessTokenProvider) : Interceptor {
     private fun isAuthenticationEndpoint(path: String): Boolean =
         path.endsWith("/auth/login") || path.endsWith("/auth/refresh") ||
             path.endsWith("/auth/oidc/mobile/callback")
+
+    private fun isTrusted(request: Request, server: ServerUrl): Boolean {
+        val url = request.url
+        val base = server.url
+        val prefix = base.encodedPath.trimEnd('/')
+        return url.scheme == base.scheme && url.host == base.host && url.port == base.port &&
+            (prefix.isEmpty() || url.encodedPath == prefix || url.encodedPath.startsWith("$prefix/"))
+    }
 
     private companion object { const val RETRY_HEADER = "X-Grimmory-Auth-Retry" }
 }

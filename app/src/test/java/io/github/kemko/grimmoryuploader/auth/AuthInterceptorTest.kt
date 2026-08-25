@@ -26,7 +26,7 @@ class AuthInterceptorTest {
             store.write(TokenPair("old", "r", System.currentTimeMillis() + 600_000))
             val base = ServerUrl.parse(server.url("/grimmory/").toString())
             val auth = AuthRepository(GrimmoryApi(OkHttpClient(), serverUrl = { base }), store)
-            val client = OkHttpClient.Builder().addInterceptor(AuthInterceptor(auth)).build()
+            val client = OkHttpClient.Builder().addInterceptor(AuthInterceptor(auth) { base }).build()
             val user = GrimmoryApi(client, serverUrl = { base }).currentUser()
             assertEquals(42L, user.id)
             assertEquals("Bearer old", server.takeRequest().getHeader("Authorization"))
@@ -49,7 +49,7 @@ class AuthInterceptorTest {
             }
             val base = ServerUrl.parse(server.url("/grimmory/").toString())
             val auth = AuthRepository(GrimmoryApi(OkHttpClient(), serverUrl = { base }), store)
-            val client = OkHttpClient.Builder().addInterceptor(AuthInterceptor(auth)).build()
+            val client = OkHttpClient.Builder().addInterceptor(AuthInterceptor(auth) { base }).build()
 
             val error = org.junit.Assert.assertThrows(io.github.kemko.grimmoryuploader.data.network.ApiException::class.java) {
                 runBlocking { GrimmoryApi(client, serverUrl = { base }).currentUser() }
@@ -59,6 +59,35 @@ class AuthInterceptorTest {
             assertNull(store.read())
         } finally {
             server.shutdown()
+        }
+    }
+
+    @Test
+    fun neverSendsBearerTokenOutsideConfiguredServer() = runBlocking {
+        val trusted = MockWebServer()
+        val untrusted = MockWebServer()
+        untrusted.enqueue(MockResponse().setBody("""{"id":7}"""))
+        trusted.start()
+        untrusted.start()
+        try {
+            val store = TestTokenStore().apply {
+                write(TokenPair("secret", "refresh", System.currentTimeMillis() + 600_000))
+            }
+            val trustedBase = ServerUrl.parse(trusted.url("/grimmory/").toString())
+            val auth = AuthRepository(GrimmoryApi(OkHttpClient(), serverUrl = { trustedBase }), store)
+            val client = OkHttpClient.Builder()
+                .addInterceptor(AuthInterceptor(auth) { trustedBase })
+                .build()
+
+            GrimmoryApi(
+                client,
+                serverUrl = { ServerUrl.parse(untrusted.url("/").toString()) },
+            ).currentUser()
+
+            assertNull(untrusted.takeRequest().getHeader("Authorization"))
+        } finally {
+            trusted.shutdown()
+            untrusted.shutdown()
         }
     }
 }

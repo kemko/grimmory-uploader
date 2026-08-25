@@ -1,72 +1,31 @@
 package io.github.kemko.grimmoryuploader.upload.db
 
 import android.content.Context
+import androidx.room.Database
 import androidx.room.Room
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
-class UploadDatabase private constructor(private val database: RoomUploadDatabase) {
-    fun jobs(): UploadJobDao = Adapter(database.jobs())
+@Database(entities = [UploadJobEntity::class], version = 2, exportSchema = false)
+abstract class UploadDatabase : RoomDatabase() {
+    abstract fun jobs(): UploadJobDao
 
     companion object {
         fun create(context: Context): UploadDatabase = Room.databaseBuilder(
             context.applicationContext,
-            RoomUploadDatabase::class.java,
+            UploadDatabase::class.java,
             "upload.db",
-        ).build()
-            .let(::UploadDatabase)
-    }
+        ).addMigrations(MIGRATION_1_2).build()
 
-    private class Adapter(private val dao: RoomUploadJobDao) : UploadJobDao {
-        override suspend fun insert(job: UploadJobEntity): Long = dao.insert(job.toRecord())
-
-        override suspend fun update(job: UploadJobEntity) = dao.update(job.toRecord())
-
-        override suspend fun find(id: Long): UploadJobEntity? = dao.find(id)?.toEntity()
-
-        override suspend fun byServer(serverUrl: String): List<UploadJobEntity> =
-            dao.byServer(serverUrl).map(RoomUploadJobEntity::toEntity)
-
-        override suspend fun delete(id: Long) = dao.delete(id)
-
-        override fun observe(states: List<UploadJobState>): Flow<List<UploadJobEntity>> = flow {
-            emit(dao.pending().map(RoomUploadJobEntity::toEntity).filter { it.state in states })
+        internal val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE upload_jobs ADD COLUMN serverCleartextConfirmed INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE upload_jobs ADD COLUMN sourceCleartextConfirmed INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE upload_jobs ADD COLUMN progressStage TEXT")
+                database.execSQL("ALTER TABLE upload_jobs ADD COLUMN progressCurrent INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE upload_jobs ADD COLUMN progressTotal INTEGER NOT NULL DEFAULT -1")
+            }
         }
-
-        override suspend fun pending(): List<UploadJobEntity> = dao.pending().map(RoomUploadJobEntity::toEntity)
     }
 }
-
-private fun UploadJobEntity.toRecord() = RoomUploadJobEntity().also {
-    it.id = id
-    it.sourceUri = sourceUri
-    it.sourceUrl = sourceUrl
-    it.stagedPath = stagedPath
-    it.displayName = displayName
-    it.mimeType = mimeType
-    it.state = state.name
-    it.serverUrl = serverUrl
-    it.libraryId = libraryId
-    it.pathId = pathId
-    it.recompressEpub = recompressEpub
-    it.failureReason = failureReason
-    it.createdAt = createdAt
-    it.updatedAt = updatedAt
-}
-
-private fun RoomUploadJobEntity.toEntity() = UploadJobEntity(
-    id = id,
-    sourceUri = sourceUri,
-    sourceUrl = sourceUrl,
-    stagedPath = stagedPath,
-    displayName = displayName,
-    mimeType = mimeType,
-    state = UploadJobState.valueOf(state),
-    serverUrl = serverUrl,
-    libraryId = libraryId,
-    pathId = pathId,
-    recompressEpub = recompressEpub,
-    failureReason = failureReason,
-    createdAt = createdAt,
-    updatedAt = updatedAt,
-)

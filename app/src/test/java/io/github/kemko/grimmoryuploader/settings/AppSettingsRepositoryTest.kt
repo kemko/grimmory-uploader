@@ -66,5 +66,26 @@ class AppSettingsRepositoryTest {
             repository.setHttpConfirmed(true)
             repository.requireCleartextConfirmation()
         }
+        assertTrue(repository.isCleartextConfirmed("http://intranet.example"))
+        assertFalse(repository.isCleartextConfirmed("http://other.example"))
+    }
+
+    @Test
+    fun appliesOnlyFullyValidatedConfiguration() = runBlocking {
+        val file = Files.createTempDirectory("settings-atomic").resolve("settings.preferences_pb").toFile()
+        val repository = AppSettingsRepository(PreferenceDataStoreFactory.create { file })
+        repository.applyConfiguration("https://one.example", 2, 3, false, AuthMode.LOCAL, false)
+
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            runBlocking {
+                repository.applyConfiguration("https://two.example", 0, 4, true, AuthMode.OIDC, false)
+            }
+        }
+
+        val current = repository.current()
+        assertEquals("https://one.example", current.serverUrl)
+        assertEquals(2, current.libraryId)
+        assertEquals(3, current.pathId)
+        assertEquals(AuthMode.LOCAL, current.authMode)
     }
 }

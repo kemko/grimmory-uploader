@@ -11,6 +11,8 @@ import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -34,6 +36,7 @@ class OidcCoordinatorTest {
                 ContextWrapper(null),
                 api,
                 AuthRepository(api, store),
+                store,
                 authorizationIntentFactory = { data ->
                     authorizationData = data
                     android.content.Intent("test.oidc")
@@ -58,5 +61,105 @@ class OidcCoordinatorTest {
     @Test
     fun pkceChallengeIsStableForVerifier() {
         assertEquals(Pkce.challenge("abc"), Pkce.challenge("abc"))
+    }
+
+    @Test
+    fun rejectsInvalidErrorAndReplayedCallbacksWithoutTokenExchange() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(
+            MockResponse().setBody(
+                """{"state":"expected","authorizationEndpoint":"${server.url("/authorize")}","clientId":"mobile"}""",
+            ),
+        )
+        try {
+            val store = TestTokenStore()
+            val api = GrimmoryApi(OkHttpClient(), serverUrl = { ServerUrl.parse(server.url("/").toString()) })
+            val coordinator = OidcCoordinator(
+                ContextWrapper(null),
+                api,
+                AuthRepository(api, store),
+                store,
+                authorizationIntentFactory = { android.content.Intent("test.oidc") },
+            )
+            coordinator.start()
+
+            assertThrows(IllegalStateException::class.java) {
+                runBlocking { coordinator.handleCallback("wrong", null, "code") }
+            }
+            assertThrows(IllegalStateException::class.java) {
+                runBlocking { coordinator.handleCallback("expected", "access_denied", null) }
+            }
+            assertNull(store.read())
+            assertNull(store.readPendingOidc())
+            assertThrows(IllegalStateException::class.java) {
+                runBlocking { coordinator.handleCallback("expected", null, "replay") }
+            }
+            assertEquals(1, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun cancellationClearsPendingRequest() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(
+            MockResponse().setBody(
+                """{"state":"expected","authorizationEndpoint":"${server.url("/authorize")}","clientId":"mobile"}""",
+            ),
+        )
+        try {
+            val store = TestTokenStore()
+            val api = GrimmoryApi(OkHttpClient(), serverUrl = { ServerUrl.parse(server.url("/").toString()) })
+            val coordinator = OidcCoordinator(
+                ContextWrapper(null),
+                api,
+                AuthRepository(api, store),
+                store,
+                authorizationIntentFactory = { android.content.Intent("test.oidc") },
+            )
+            coordinator.start()
+
+            assertThrows(IllegalStateException::class.java) {
+                runBlocking { coordinator.handleAuthorizationResult(null) }
+            }
+            assertNull(store.readPendingOidc())
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun usesDiscoveryFallbackAndRejectsMissingAuthorizationData() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(
+            MockResponse().setBody(
+                """{"state":"state","issuer":"${server.url("/issuer")}","clientId":"mobile"}""",
+            ),
+        )
+        server.enqueue(
+            MockResponse().setBody(
+                """{"authorization_endpoint":"${server.url("/authorize")}","token_endpoint":"${server.url("/token")}"}""",
+            ),
+        )
+        try {
+            val store = TestTokenStore()
+            val api = GrimmoryApi(OkHttpClient(), serverUrl = { ServerUrl.parse(server.url("/").toString()) })
+            lateinit var data: io.github.kemko.grimmoryuploader.data.auth.OidcAuthorizationData
+            OidcCoordinator(
+                ContextWrapper(null),
+                api,
+                AuthRepository(api, store),
+                store,
+                authorizationIntentFactory = { value -> data = value; android.content.Intent("test.oidc") },
+            ).start()
+            assertEquals(server.url("/authorize").toString(), data.authorizationEndpoint)
+            assertEquals(2, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
     }
 }

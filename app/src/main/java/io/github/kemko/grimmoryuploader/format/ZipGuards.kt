@@ -14,7 +14,11 @@ object ZipGuards {
         require(name.isNotBlank() && name.length <= MAX_NAME_LENGTH) { "Unsafe ZIP entry name" }
         require(!name.startsWith('/') && !name.startsWith('\\')) { "Absolute ZIP entry path" }
         val parts = name.replace('\\', '/').split('/')
-        require(parts.size <= MAX_PATH_DEPTH && parts.dropLast(1).none { it == ".." || it.isEmpty() }) {
+        val pathParts = if (name.endsWith('/') || name.endsWith('\\')) parts.dropLast(1) else parts
+        require(
+            pathParts.isNotEmpty() && pathParts.size <= MAX_PATH_DEPTH &&
+                pathParts.none { it == "." || it == ".." || it.isEmpty() },
+        ) {
             "Unsafe ZIP entry path"
         }
     }
@@ -23,7 +27,9 @@ object ZipGuards {
         validateName(entry.name)
         require(entry.size <= MAX_ENTRY_SIZE || entry.size < 0) { "ZIP entry is too large" }
         if (entry.size >= 0 && compressedSize > 0) {
-            require(entry.size / compressedSize <= MAX_COMPRESSION_RATIO) { "ZIP compression ratio is unsafe" }
+            require(entry.size.toDouble() / compressedSize <= MAX_COMPRESSION_RATIO.toDouble()) {
+                "ZIP compression ratio is unsafe"
+            }
         }
         require(total <= MAX_TOTAL_UNCOMPRESSED) { "ZIP archive is too large" }
     }

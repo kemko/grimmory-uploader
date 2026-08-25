@@ -19,6 +19,7 @@ data class AppSettings(
     val pathId: Int = 1,
     val recompressEpub: Boolean = true,
     val httpConfirmed: Boolean = false,
+    val confirmedHttpUrl: String? = null,
     val authMode: AuthMode = AuthMode.AUTO,
 )
 
@@ -32,16 +33,21 @@ class AppSettingsRepository(
         val pathId = intPreferencesKey("path_id")
         val recompressEpub = booleanPreferencesKey("recompress_epub")
         val httpConfirmed = booleanPreferencesKey("http_confirmed")
+        val confirmedHttpUrl = stringPreferencesKey("confirmed_http_url")
         val authMode = stringPreferencesKey("auth_mode")
     }
 
     val settings: Flow<AppSettings> = dataStore.data.map { preferences ->
+        val serverUrl = preferences[Keys.serverUrl]
+        val confirmedUrl = preferences[Keys.confirmedHttpUrl]
+            ?: serverUrl.takeIf { preferences[Keys.httpConfirmed] == true }
         AppSettings(
-            serverUrl = preferences[Keys.serverUrl],
+            serverUrl = serverUrl,
             libraryId = preferences[Keys.libraryId] ?: 1,
             pathId = preferences[Keys.pathId] ?: 1,
             recompressEpub = preferences[Keys.recompressEpub] ?: true,
-            httpConfirmed = preferences[Keys.httpConfirmed] ?: false,
+            httpConfirmed = serverUrl != null && serverUrl == confirmedUrl,
+            confirmedHttpUrl = confirmedUrl,
             authMode = preferences[Keys.authMode]
                 ?.let { value -> runCatching { AuthMode.valueOf(value) }.getOrDefault(AuthMode.AUTO) }
                 ?: AuthMode.AUTO,
@@ -56,7 +62,8 @@ class AppSettingsRepository(
         if (previous != null && previous != normalized) onServerChanged()
         dataStore.edit { preferences ->
             preferences[Keys.serverUrl] = normalized
-            preferences[Keys.httpConfirmed] = false
+            preferences.remove(Keys.httpConfirmed)
+            preferences.remove(Keys.confirmedHttpUrl)
         }
     }
 
@@ -75,7 +82,12 @@ class AppSettingsRepository(
     }
 
     suspend fun setHttpConfirmed(confirmed: Boolean) {
-        dataStore.edit { it[Keys.httpConfirmed] = confirmed }
+        val server = current().serverUrl
+        dataStore.edit { preferences ->
+            preferences.remove(Keys.httpConfirmed)
+            if (confirmed && server != null) preferences[Keys.confirmedHttpUrl] = server
+            else preferences.remove(Keys.confirmedHttpUrl)
+        }
     }
 
     suspend fun setAuthMode(mode: AuthMode) {
@@ -93,5 +105,33 @@ class AppSettingsRepository(
     }
 
     suspend fun isCleartextConfirmed(url: String): Boolean =
-        !ServerUrl.parse(url).isCleartext || current().httpConfirmed
+        ServerUrl.parse(url).let { server ->
+            !server.isCleartext || current().confirmedHttpUrl == server.normalized
+        }
+
+    suspend fun applyConfiguration(
+        serverUrl: String,
+        libraryId: Int,
+        pathId: Int,
+        recompressEpub: Boolean,
+        authMode: AuthMode,
+        confirmCleartext: Boolean,
+    ) {
+        val normalized = ServerUrl.parse(serverUrl).normalized
+        require(libraryId > 0) { "libraryId must be positive" }
+        require(pathId > 0) { "pathId must be positive" }
+        check(!normalized.startsWith("http://") || confirmCleartext) { "HTTP requires explicit confirmation" }
+        val previous = current().serverUrl
+        if (previous != null && previous != normalized) onServerChanged()
+        dataStore.edit { preferences ->
+            preferences[Keys.serverUrl] = normalized
+            preferences[Keys.libraryId] = libraryId
+            preferences[Keys.pathId] = pathId
+            preferences[Keys.recompressEpub] = recompressEpub
+            preferences[Keys.authMode] = authMode.name
+            preferences.remove(Keys.httpConfirmed)
+            if (normalized.startsWith("http://")) preferences[Keys.confirmedHttpUrl] = normalized
+            else preferences.remove(Keys.confirmedHttpUrl)
+        }
+    }
 }

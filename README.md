@@ -27,6 +27,8 @@ Available Make targets are:
 - `ci`: run the complete verification gate used by CI.
 - `release-apk`: assemble the release APK.
 
+Dependency-Check feed updates are disabled by default for repeatable local runs. Use `make security DEPENDENCY_CHECK_UPDATE=true` to refresh vulnerability data; this requires network access. Before `make release-apk`, set `ANDROID_SIGNING_STORE_FILE`, `ANDROID_SIGNING_STORE_PASSWORD`, `ANDROID_SIGNING_KEY_ALIAS`, and `ANDROID_SIGNING_KEY_PASSWORD`.
+
 ## First run and authentication
 
 1. Enter the Grimmory server URL, including any path prefix. Only `http://` and `https://` URLs are accepted.
@@ -34,7 +36,7 @@ Available Make targets are:
 3. For HTTP, enable the explicit warning confirmation. HTTPS is the default and recommended scheme.
 4. Sign in locally with the server login form, or choose OIDC when the server exposes it. `AUTO` follows the server's `oidcEnabled` and `oidcForceOnlyMode` settings.
 
-The app stores no username or password. Access and refresh tokens are encrypted with Android Keystore using AES-GCM. OIDC uses Authorization Code + PKCE, a server-generated state value, and a nonce. Register this redirect URI with Grimmory/IdP unless the server supplies another one:
+The app stores no username or password. Access and refresh tokens are encrypted with Android Keystore using AES-GCM. OIDC uses Authorization Code + PKCE, a server-generated state value, and a nonce. Register this redirect URI with Grimmory and the IdP:
 
 ```text
 io.github.kemko.grimmoryuploader:/oauth2redirect
@@ -59,6 +61,8 @@ The queued job stores a snapshot of the server URL, library ID, path ID, and EPU
 
 File extension and MIME type are hints only. Broad Android MIME filters are needed because Android may not filter chooser results reliably by extension; the app checks the bytes after receiving the intent. HTML/error pages, ordinary ZIP archives, malformed XML or ZIP, unsafe ZIP paths, oversized/high-ratio archives, multiple FB2 entries, and DJVU are rejected before upload. XML external entities are disabled.
 
+ZIP input is limited to 2,000 entries, 512 MiB per entry and in total, a 100:1 compression ratio, 240-character entry names, and 16 path components. Any staged local or downloaded source is limited to 512 MiB.
+
 FB2.ZIP is unpacked directly into the upload stream. When EPUB recompression is enabled, `mimetype` remains first and uncompressed and all other entries are streamed through `Deflater.BEST_COMPRESSION`. Neither transformed FB2 nor transformed EPUB is written as an intermediate file. With recompression disabled, the validated original EPUB is uploaded unchanged.
 
 ## Links, progress, and cancellation
@@ -77,6 +81,6 @@ Settings control the normalized server URL, authentication mode (`AUTO`, `LOCAL`
 
 ## CI and releases
 
-CI runs on pull requests and pushes to `trunk` with JDK 26 and Android SDK 36. It executes `make ci` and stores reports and the debug APK as workflow artifacts. Use short Conventional Commits such as `feat: add upload retry` or `fix: reject unsafe ZIP path`; Release Please uses these commits to propose releases and updates `version.properties`. The version is stable SemVer, and Android `versionCode` is derived deterministically from it.
+CI runs on pull requests and pushes to `master` with JDK 26 and Android SDK 36. It executes `make ci`, refreshes the Dependency-Check database, and stores reports and the debug APK as workflow artifacts. Configure the optional `NVD_API_KEY` secret to speed up NVD updates. Use short Conventional Commits such as `feat: add upload retry` or `fix: reject unsafe ZIP path`; Release Please uses these commits to propose releases and updates `version.properties`. The version is stable SemVer, and Android `versionCode` is derived deterministically from it.
 
-Release Please runs on pushes to `trunk`. When a GitHub Release is published, the release workflow builds and uploads a signed APK and its SHA-256 file. Configure these GitHub Actions secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_SIGNING_KEY_ALIAS`, `ANDROID_SIGNING_STORE_PASSWORD`, and `ANDROID_SIGNING_KEY_PASSWORD`. The workflow writes the decoded keystore only to runner temporary storage and removes it in an `always()` step; signing values are not printed.
+Release Please runs on pushes to `master`. When a GitHub Release is published, the release workflow builds and uploads a signed APK and its SHA-256 file. Configure these GitHub Actions secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_SIGNING_KEY_ALIAS`, `ANDROID_SIGNING_STORE_PASSWORD`, and `ANDROID_SIGNING_KEY_PASSWORD`. The workflow writes the decoded keystore only to runner temporary storage and removes it in an `always()` step; signing values are not printed.

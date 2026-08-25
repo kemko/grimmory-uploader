@@ -17,7 +17,7 @@ data class TransferProgress(
     val total: Long = -1,
 )
 
-class TransferNotificationManager(private val context: Context) {
+class TransferNotificationManager(private val context: Context) : TransferEvents {
     private val manager = context.getSystemService(NotificationManager::class.java)
 
     init {
@@ -29,7 +29,7 @@ class TransferNotificationManager(private val context: Context) {
     }
 
     fun progressNotification(jobId: Long, name: String, progress: TransferProgress): Notification {
-        val builder = builder(jobId, name)
+        val builder = activeBuilder(jobId, name)
             .setContentText(progress.stage.label)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -46,17 +46,17 @@ class TransferNotificationManager(private val context: Context) {
 
     fun showSuccess(jobId: Long, name: String) = notify(
         jobId,
-        builder(jobId, name).setContentText("Upload complete").setAutoCancel(true).build(),
+        openBuilder(jobId, name).setContentText("Upload complete").setAutoCancel(true).build(),
     )
 
     fun showFailure(jobId: Long, name: String, reason: String) = notify(
         jobId,
-        builder(jobId, name).setContentText(reason.take(160)).setAutoCancel(true).build(),
+        openBuilder(jobId, name).setContentText(reason.take(160)).setAutoCancel(true).build(),
     )
 
     fun showInputFailure(reason: String) = notify(
         INPUT_FAILURE_ID,
-        builder(INPUT_FAILURE_ID, "Grimmory Uploader")
+        baseBuilder("Grimmory Uploader")
             .setContentText(reason.take(160))
             .setAutoCancel(true)
             .build(),
@@ -64,7 +64,7 @@ class TransferNotificationManager(private val context: Context) {
 
     fun showAuthRequired(jobId: Long, name: String) = notify(
         jobId,
-        builder(jobId, name)
+        activeBuilder(jobId, name)
             .setContentText("Sign in to continue")
             .setAutoCancel(true)
             .addAction(
@@ -79,17 +79,40 @@ class TransferNotificationManager(private val context: Context) {
 
     fun showCleartextConfirmation(jobId: Long, name: String) = notify(
         jobId,
-        builder(jobId, name).setContentText("HTTP confirmation required").setAutoCancel(true).build(),
+        activeBuilder(jobId, name)
+            .setContentText("HTTP confirmation required")
+            .setAutoCancel(true)
+            .addAction(
+                Notification.Action.Builder(
+                    null,
+                    "Allow HTTP",
+                    pendingIntent(TransferActionReceiver.ACTION_CONFIRM_HTTP, jobId),
+                ).build(),
+            )
+            .build(),
     )
 
     fun cancel(jobId: Long) = manager.cancel(notificationId(jobId))
 
-    private fun builder(jobId: Long, name: String): Notification.Builder {
+    override fun progress(jobId: Long, name: String, progress: TransferProgress) = showProgress(jobId, name, progress)
+    override fun success(jobId: Long, name: String) = showSuccess(jobId, name)
+    override fun authRequired(jobId: Long, name: String) = showAuthRequired(jobId, name)
+    override fun cleartextRequired(jobId: Long, name: String) = showCleartextConfirmation(jobId, name)
+    override fun failure(jobId: Long, name: String, reason: String) = showFailure(jobId, name, reason)
+
+    private fun baseBuilder(name: String): Notification.Builder {
         val builder = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(context, CHANNEL_ID)
         else Notification.Builder(context)
         return builder
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setContentTitle(name)
+    }
+
+    private fun openBuilder(jobId: Long, name: String): Notification.Builder =
+        baseBuilder(name).setContentIntent(pendingIntent(TransferActionReceiver.ACTION_OPEN, jobId))
+
+    private fun activeBuilder(jobId: Long, name: String): Notification.Builder =
+        openBuilder(jobId, name)
             .setContentIntent(pendingIntent(TransferActionReceiver.ACTION_OPEN, jobId))
             .addAction(
                 Notification.Action.Builder(
@@ -98,10 +121,10 @@ class TransferNotificationManager(private val context: Context) {
                     pendingIntent(TransferActionReceiver.ACTION_CANCEL, jobId),
                 ).build(),
             )
-    }
 
     private fun notify(jobId: Long, notification: Notification) {
-        runCatching { manager.notify(notificationId(jobId), notification) }
+        val id = if (jobId == INPUT_FAILURE_ID) INPUT_FAILURE_NOTIFICATION_ID else notificationId(jobId)
+        runCatching { manager.notify(id, notification) }
     }
 
     private fun pendingIntent(action: String, jobId: Long): PendingIntent = PendingIntent.getBroadcast(
@@ -112,11 +135,13 @@ class TransferNotificationManager(private val context: Context) {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
-    private fun notificationId(jobId: Long): Int = (jobId xor (jobId ushr 32)).toInt().coerceAtLeast(1)
+    private fun notificationId(jobId: Long): Int =
+        (jobId xor (jobId ushr 32)).toInt().coerceIn(1, INPUT_FAILURE_NOTIFICATION_ID - 1)
 
     private companion object {
         const val CHANNEL_ID = "book_transfers"
-        const val INPUT_FAILURE_ID = 1L
+        const val INPUT_FAILURE_ID = Long.MIN_VALUE
+        const val INPUT_FAILURE_NOTIFICATION_ID = Int.MAX_VALUE
         val TransferStage.label: String
             get() = when (this) {
                 TransferStage.DOWNLOAD -> "Downloading"

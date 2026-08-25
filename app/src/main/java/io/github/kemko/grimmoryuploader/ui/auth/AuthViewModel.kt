@@ -4,17 +4,24 @@ import android.content.Intent
 import io.github.kemko.grimmoryuploader.data.auth.AuthRepository
 import io.github.kemko.grimmoryuploader.data.auth.TokenPair
 import io.github.kemko.grimmoryuploader.data.settings.AuthMode
-import io.github.kemko.grimmoryuploader.data.settings.AppSettingsRepository
 import io.github.kemko.grimmoryuploader.di.AppContainer
 
 class AuthViewModel(private val container: AppContainer) {
     private val auth: AuthRepository = container.auth
 
-    suspend fun isAuthenticated(): Boolean = runCatching {
-        auth.validAccessToken() != null && auth.currentUser().let { true }
-    }.getOrElse {
-        auth.logout()
-        false
+    suspend fun isAuthenticated(): Boolean {
+        if (auth.validAccessToken() == null) return false
+        return try {
+            auth.currentUser()
+            true
+        } catch (error: io.github.kemko.grimmoryuploader.data.network.ApiException) {
+            if (error.statusCode == 401) {
+                auth.logout()
+                false
+            } else {
+                throw error
+            }
+        }
     }
 
     suspend fun login(username: String, password: String): Result<TokenPair> = runCatching {
@@ -27,9 +34,14 @@ class AuthViewModel(private val container: AppContainer) {
         container.transferScheduler.resumeAwaitingAuth()
     }
 
-    suspend fun saveMode(mode: AuthMode) = container.settings.setAuthMode(mode)
-}
+    suspend fun modeDecision(): io.github.kemko.grimmoryuploader.data.auth.AuthModeDecision {
+        val settings = container.settings.current()
+        val publicSettings = runCatching { auth.publicSettings() }.getOrNull()
+        return io.github.kemko.grimmoryuploader.data.auth.AuthModeSelector.select(
+            settings.authMode,
+            publicSettings,
+        )
+    }
 
-class AuthSettingsViewModel(private val settings: AppSettingsRepository) {
-    suspend fun mode(): AuthMode = settings.current().authMode
+    suspend fun selectMode(mode: AuthMode) = container.settings.setAuthMode(mode)
 }

@@ -68,16 +68,6 @@
                 <data android:scheme="file" android:mimeType="application/octet-stream" android:pathSuffix=".pdf" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".ui.auth.OidcRedirectActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="io.github.grimmoryuploader" />
-            </intent-filter>
-        </activity>
         <service
             android:name=".upload.TransferJobService"
             android:exported="false"

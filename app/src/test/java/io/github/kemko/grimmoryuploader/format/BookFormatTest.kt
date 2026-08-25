@@ -71,6 +71,40 @@ class BookFormatTest {
     }
 
     @Test
+    fun rejectsZipTraversalAndBombLimitsForFilesAndStreams() {
+        listOf(
+            "../book.fb2",
+            "/book.fb2",
+            "a//book.fb2",
+            "a/./book.fb2",
+            "a/".repeat(ZipGuards.MAX_PATH_DEPTH) + "book.fb2",
+            "a".repeat(ZipGuards.MAX_NAME_LENGTH + 1),
+        ).forEach { name ->
+            assertThrows(IllegalArgumentException::class.java) { ZipGuards.validateName(name) }
+        }
+        val oversized = ZipEntry("book.fb2").apply {
+            size = ZipGuards.MAX_ENTRY_SIZE + 1
+            compressedSize = size
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ZipGuards.validateEntry(oversized, oversized.compressedSize, oversized.size)
+        }
+        val excessiveTotal = ZipEntry("book.fb2").apply { size = 1; compressedSize = 1 }
+        assertThrows(IllegalArgumentException::class.java) {
+            ZipGuards.validateEntry(excessiveTotal, 1, ZipGuards.MAX_TOTAL_UNCOMPRESSED + 1)
+        }
+
+        val dir = Files.createTempDirectory("zip-bomb").toFile()
+        val bombXml = "<?xml version=\"1.0\"?><FictionBook><body><p>${"0".repeat(100_000)}</p></body></FictionBook>"
+        val bomb = zip(dir, "bomb.zip", listOf("book.fb2" to bombXml))
+        assertThrows(IllegalArgumentException::class.java) { detector.detect(bomb) }
+        assertThrows(IllegalArgumentException::class.java) {
+            detector.detect(ByteArrayInputStream(bomb.readBytes()))
+        }
+        dir.deleteRecursively()
+    }
+
+    @Test
     fun transformsWithoutCreatingOutputFile() {
         val dir = Files.createTempDirectory("transform").toFile()
         val source = File(dir, "book.fb2").apply { writeText(fb2) }

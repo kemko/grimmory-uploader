@@ -14,23 +14,30 @@ class SettingsViewModel(private val container: AppContainer) {
         pathId: Int,
         recompressEpub: Boolean,
         confirmCleartext: Boolean,
+        confirmServerChange: Boolean = false,
     ) {
         val old = container.settings.current()
         val normalizedNew = io.github.kemko.grimmoryuploader.data.network.ServerUrl.parse(serverUrl).normalized
-        if (old.serverUrl != null && old.serverUrl != normalizedNew) {
+        require(libraryId > 0) { "libraryId must be positive" }
+        require(pathId > 0) { "pathId must be positive" }
+        check(!normalizedNew.startsWith("http://") || confirmCleartext) { "HTTP requires explicit confirmation" }
+        val serverChanged = old.serverUrl != null && old.serverUrl != normalizedNew
+        if (serverChanged && !confirmServerChange) throw ServerChangeConfirmationRequired
+        if (serverChanged) {
             container.upload.pending()
                 .filter { it.serverUrl == old.serverUrl }
                 .forEach { container.transferScheduler.cancel(it.id) }
             container.upload.cancelForServer(old.serverUrl)
         }
-        container.settings.setServerUrl(normalizedNew)
-        container.settings.setAuthMode(authMode)
-        container.settings.setLibraryId(libraryId)
-        container.settings.setPathId(pathId)
-        container.settings.setRecompressEpub(recompressEpub)
-        if (normalizedNew.startsWith("http://")) {
-            check(confirmCleartext) { "HTTP requires explicit confirmation" }
-            container.settings.setHttpConfirmed(true)
-        }
+        container.settings.applyConfiguration(
+            normalizedNew,
+            libraryId,
+            pathId,
+            recompressEpub,
+            authMode,
+            confirmCleartext,
+        )
     }
 }
+
+data object ServerChangeConfirmationRequired : IllegalStateException("Confirm changing the Grimmory server")

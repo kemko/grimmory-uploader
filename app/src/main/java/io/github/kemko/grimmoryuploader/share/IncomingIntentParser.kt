@@ -50,7 +50,9 @@ class IncomingIntentParser(private val resolver: ContentResolver? = null) {
             streamUri = stream?.toString(),
             text = intent.getStringExtra(Intent.EXTRA_TEXT),
             mimeType = intent.type,
-            displayName = sourceUri?.let { resolver?.let { contentName(it, sourceUri) } },
+            displayName = sourceUri
+                ?.takeIf { it.scheme.equals(ContentResolver.SCHEME_CONTENT, ignoreCase = true) }
+                ?.let { uri -> resolver?.let { runCatching { contentName(it, uri) }.getOrNull() } },
             contentDisposition = intent.getStringExtra(CONTENT_DISPOSITION),
             title = intent.getStringExtra(Intent.EXTRA_TITLE),
         ))

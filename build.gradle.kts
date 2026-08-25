@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.kover) apply false
     alias(libs.plugins.ktlint) apply false
     alias(libs.plugins.dependency.check) apply false
+    alias(libs.plugins.ksp) apply false
 }
 
 val versionProperties = Properties().apply {

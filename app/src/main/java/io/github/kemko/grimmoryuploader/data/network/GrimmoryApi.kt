@@ -1,7 +1,5 @@
 package io.github.kemko.grimmoryuploader.data.network
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -10,6 +8,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.Buffer
 
 class ApiException(val statusCode: Int, message: String) : IllegalStateException(message)
 
@@ -29,6 +28,9 @@ class GrimmoryApi(
 
     suspend fun oidcDiscovery(issuer: String): OidcDiscoveryResponse {
         val issuerUrl = ServerUrl.parse(issuer)
+        require(!issuerUrl.isCleartext || issuerUrl.url.host in setOf("127.0.0.1", "localhost")) {
+            "OIDC discovery must use HTTPS"
+        }
         return executeJson(
             Request.Builder().url(issuerUrl.endpoint(".well-known/openid-configuration")).get().build(),
         )
@@ -77,13 +79,29 @@ class GrimmoryApi(
         )
     }
 
-    private suspend inline fun <reified T> executeJson(request: Request): T = withContext(Dispatchers.IO) {
-        client.newCall(request).execute().use { response ->
-            val text = response.body.string()
+    private suspend inline fun <reified T> executeJson(request: Request): T {
+        return client.newCall(request).await().use { response ->
+            val source = response.body.source()
+            val buffer = Buffer()
+            var remaining = MAX_RESPONSE_BYTES + 1L
+            while (remaining > 0) {
+                val read = source.read(buffer, minOf(remaining, DEFAULT_BUFFER_SIZE.toLong()))
+                if (read < 0) break
+                remaining -= read
+            }
+            val bytes = buffer.readByteArray()
+            if (bytes.size > MAX_RESPONSE_BYTES) {
+                throw ApiException(response.code.takeIf { it >= 400 } ?: 502, "Grimmory response is too large")
+            }
+            val text = bytes.decodeToString()
             if (!response.isSuccessful) {
                 throw ApiException(response.code, text.take(512).ifBlank { "Grimmory request failed" })
             }
             json.decodeFromString<T>(text)
         }
+    }
+
+    private companion object {
+        const val MAX_RESPONSE_BYTES = 1024 * 1024
     }
 }

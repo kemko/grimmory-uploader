@@ -13,29 +13,30 @@ import org.xml.sax.Attributes
 import org.xml.sax.helpers.DefaultHandler
 
 class BookFormatDetector {
-    fun detect(file: File, hint: String? = null): BookFormat {
+    fun detect(file: File, hint: String? = null, cancelled: () -> Boolean = { false }): BookFormat {
         require(file.isFile) { "Book source does not exist" }
         file.inputStream().use { input ->
             val prefix = input.readNBytes(16)
             if (prefix.startsWith(PDF_SIGNATURE)) return BookFormat.PDF
             if (prefix.isDjvu()) throw UnsupportedBookException("DJVU is not supported")
-            if (prefix.startsWith(ZIP_SIGNATURE)) return detectZip(file)
-            return detectXml(file)
+            if (prefix.startsWith(ZIP_SIGNATURE)) return detectZip(file, cancelled)
+            return detectXml(file, cancelled)
         }
     }
 
-    fun detect(input: InputStream, hint: String? = null): BookFormat {
-        val buffered = if (input is BufferedInputStream) input else BufferedInputStream(input)
+    fun detect(input: InputStream, hint: String? = null, cancelled: () -> Boolean = { false }): BookFormat {
+        val checked = CancellableInputStream(input, cancelled)
+        val buffered = BufferedInputStream(checked)
         buffered.mark(16)
         val prefix = buffered.readNBytes(16)
         buffered.reset()
         if (prefix.startsWith(PDF_SIGNATURE)) return BookFormat.PDF
         if (prefix.isDjvu()) throw UnsupportedBookException("DJVU is not supported")
-        if (prefix.startsWith(ZIP_SIGNATURE)) return detectZipStream(buffered)
+        if (prefix.startsWith(ZIP_SIGNATURE)) return detectZipStream(buffered, cancelled)
         return detectXml(buffered)
     }
 
-    private fun detectZip(file: File): BookFormat = ZipFile(file).use { zip ->
+    private fun detectZip(file: File, cancelled: () -> Boolean): BookFormat = ZipFile(file).use { zip ->
         var total = 0L
         var entries = 0
         var fb2Count = 0
@@ -43,6 +44,7 @@ class BookFormatDetector {
         var firstEntry = true
         val enumeration = zip.entries()
         while (enumeration.hasMoreElements()) {
+            ensureNotCancelled(cancelled)
             val entry = enumeration.nextElement()
             entries++
             require(entries <= ZipGuards.MAX_ENTRIES) { "Too many ZIP entries" }
@@ -51,11 +53,11 @@ class BookFormatDetector {
             ZipGuards.validateEntry(entry, entry.compressedSize, total)
             val lower = entry.name.lowercase()
             if (firstEntry && entry.name == "mimetype") {
-                val value = zip.getInputStream(entry).use { it.readNBytes(64).toString(StandardCharsets.UTF_8).trim() }
+                val value = zip.getInputStream(entry).use { CancellableInputStream(it, cancelled).readNBytes(64).toString(StandardCharsets.UTF_8).trim() }
                 if (value == "application/epub+zip" && entry.method == java.util.zip.ZipEntry.STORED) epub = true
             }
             if (!entry.isDirectory && lower.endsWith(".fb2")) {
-                zip.getInputStream(entry).use { if (isFictionBook(it)) fb2Count++ }
+                zip.getInputStream(entry).use { if (isFictionBook(CancellableInputStream(it, cancelled))) fb2Count++ }
             }
             firstEntry = false
         }
@@ -67,7 +69,7 @@ class BookFormatDetector {
         }
     }
 
-    private fun detectZipStream(input: InputStream): BookFormat {
+    private fun detectZipStream(input: InputStream, cancelled: () -> Boolean): BookFormat {
         var entries = 0
         var total = 0L
         var fb2Count = 0
@@ -75,6 +77,7 @@ class BookFormatDetector {
         var firstEntry = true
         ZipInputStream(input).use { zip ->
             while (true) {
+                ensureNotCancelled(cancelled)
                 val entry = zip.nextEntry ?: break
                 entries++
                 require(entries <= ZipGuards.MAX_ENTRIES) { "Too many ZIP entries" }
@@ -89,7 +92,7 @@ class BookFormatDetector {
                 val entryBytes = counter.count
                 require(entryBytes <= ZipGuards.MAX_ENTRY_SIZE) { "ZIP entry is too large" }
                 total = Math.addExact(total, entryBytes)
-                require(total <= ZipGuards.MAX_TOTAL_UNCOMPRESSED) { "ZIP archive is too large" }
+                ZipGuards.validateEntry(entry, entry.compressedSize, total)
                 if (firstEntry && entry.name == "mimetype" && content?.toString(StandardCharsets.UTF_8)?.trim() == "application/epub+zip" && entry.method == ZipEntry.STORED) epub = true
                 firstEntry = false
             }
@@ -102,7 +105,8 @@ class BookFormatDetector {
         }
     }
 
-    private fun detectXml(file: File): BookFormat = file.inputStream().use { detectXml(it) }
+    private fun detectXml(file: File, cancelled: () -> Boolean): BookFormat =
+        file.inputStream().use { detectXml(CancellableInputStream(it, cancelled)) }
 
     private fun detectXml(input: InputStream): BookFormat {
         require(isFictionBook(input)) { "XML root is not FictionBook" }
@@ -137,6 +141,10 @@ class BookFormatDetector {
         private val PDF_SIGNATURE = "%PDF-".toByteArray(StandardCharsets.US_ASCII)
         private val ZIP_SIGNATURE = byteArrayOf(0x50, 0x4b, 0x03, 0x04)
     }
+
+    private fun ensureNotCancelled(cancelled: () -> Boolean) {
+        if (cancelled()) throw kotlinx.coroutines.CancellationException("Transfer cancelled")
+    }
 }
 
 private class CountingInputStream(private val delegate: InputStream) : InputStream() {
@@ -147,4 +155,25 @@ private class CountingInputStream(private val delegate: InputStream) : InputStre
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
         delegate.read(buffer, offset, length).also { if (it > 0) count += it }
+}
+
+private class CancellableInputStream(
+    private val delegate: InputStream,
+    private val cancelled: () -> Boolean,
+) : InputStream() {
+    override fun read(): Int {
+        checkCancellation()
+        return delegate.read()
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        checkCancellation()
+        return delegate.read(buffer, offset, length)
+    }
+
+    override fun close() = delegate.close()
+
+    private fun checkCancellation() {
+        if (cancelled()) throw kotlinx.coroutines.CancellationException("Transfer cancelled")
+    }
 }

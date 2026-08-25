@@ -2,9 +2,7 @@
 
 package io.github.kemko.grimmoryuploader.ui
 
-import android.content.ContentResolver
 import android.content.Intent
-import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,9 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -27,98 +27,138 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import io.github.kemko.grimmoryuploader.data.auth.AuthModeDecision
-import io.github.kemko.grimmoryuploader.data.auth.AuthModeSelector
 import io.github.kemko.grimmoryuploader.data.settings.AuthMode
 import io.github.kemko.grimmoryuploader.di.AppContainer
-import io.github.kemko.grimmoryuploader.share.IncomingInput
 import io.github.kemko.grimmoryuploader.share.IncomingIntentParser
 import io.github.kemko.grimmoryuploader.ui.auth.AuthViewModel
 import io.github.kemko.grimmoryuploader.ui.home.HomeViewModel
 import io.github.kemko.grimmoryuploader.ui.incoming.IncomingBookViewModel
 import io.github.kemko.grimmoryuploader.ui.onboarding.OnboardingViewModel
 import io.github.kemko.grimmoryuploader.ui.settings.SettingsViewModel
-import io.github.kemko.grimmoryuploader.upload.db.UploadJobEntity
+import io.github.kemko.grimmoryuploader.ui.settings.ServerChangeConfirmationRequired
 import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
+import io.github.kemko.grimmoryuploader.upload.TransferStage
 import kotlinx.coroutines.launch
 
-private enum class Destination { LOADING, ONBOARDING, AUTH, HOME, INCOMING, SETTINGS, ERROR }
+private enum class Destination { LOADING, ONBOARDING, AUTH, HOME, SETTINGS, ERROR }
 
 @Composable
 fun AppNavHost(
     container: AppContainer,
     launchIntent: Intent? = null,
     requestNotificationPermission: () -> Unit = {},
+    launchOidc: (Intent) -> Unit = {},
+    authError: String? = null,
+    onLaunchIntentConsumed: () -> Unit = {},
+    notificationPermissionDenied: Boolean = false,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var destination by remember { mutableStateOf(Destination.LOADING) }
-    var incoming by remember { mutableStateOf<IncomingInput?>(null) }
     var incomingError by remember { mutableStateOf<String?>(null) }
     var pendingJobId by remember { mutableStateOf<Long?>(null) }
-    var authError by remember { mutableStateOf<String?>(null) }
     var authDecision by remember { mutableStateOf<AuthModeDecision?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
+    val incomingViewModel = remember { IncomingBookViewModel(container) }
+    val authViewModel = remember { AuthViewModel(container) }
+
+    suspend fun preparePending(id: Long) {
+        incomingViewModel.prepare(id, requestNotificationPermission).fold(
+            onSuccess = { preparation ->
+                if (preparation.requiresAuth) {
+                    authDecision = authViewModel.modeDecision()
+                    destination = Destination.AUTH
+                } else {
+                    destination = Destination.HOME
+                }
+            },
+            onFailure = { error ->
+                incomingError = error.message ?: "Unable to prepare upload"
+                destination = Destination.ERROR
+            },
+        )
+    }
 
     LaunchedEffect(launchIntent, refreshKey) {
         if (launchIntent != null && launchIntent.action != Intent.ACTION_MAIN) {
-            runCatching { IncomingIntentParser(context.contentResolver).parse(launchIntent) }
-                .onSuccess { input -> incoming = input; destination = Destination.INCOMING }
-                .onFailure { error ->
+            val persisted = runCatching { IncomingIntentParser(context.contentResolver).parse(launchIntent) }
+                .mapCatching { input -> incomingViewModel.persist(input, context.contentResolver).getOrThrow() }
+            onLaunchIntentConsumed()
+            persisted.fold(
+                onSuccess = { pendingJobId = it.id },
+                onFailure = { error ->
                     incomingError = error.message ?: "Unsupported input"
                     container.transferNotifications.showInputFailure(incomingError!!)
                     destination = Destination.ERROR
-                }
-            return@LaunchedEffect
+                    return@LaunchedEffect
+                },
+            )
+        } else if (pendingJobId == null) {
+            pendingJobId = container.upload.pendingIntake()?.id
         }
         val settings = container.settings.current()
         if (settings.serverUrl == null) {
             destination = Destination.ONBOARDING
+        } else if (pendingJobId != null) {
+            preparePending(requireNotNull(pendingJobId))
         } else {
-            destination = if (AuthViewModel(container).isAuthenticated()) Destination.HOME else Destination.AUTH
+            runCatching { authViewModel.isAuthenticated() }.fold(
+                onSuccess = { authenticated ->
+                    if (authenticated) destination = Destination.HOME
+                    else {
+                        authDecision = authViewModel.modeDecision()
+                        destination = Destination.AUTH
+                    }
+                },
+                onFailure = { error ->
+                    incomingError = error.message ?: "Unable to verify authentication"
+                    destination = Destination.ERROR
+                },
+            )
         }
     }
 
     when (destination) {
         Destination.LOADING -> LoadingScreen()
         Destination.ONBOARDING -> OnboardingScreen(
-            viewModel = remember { OnboardingViewModel(container.settings, container.auth) },
-            onConfigured = { decision -> authDecision = decision; destination = if (incoming != null) Destination.INCOMING else Destination.AUTH },
+            viewModel = remember { OnboardingViewModel(container.settings, container.onboardingProbe) },
+            onConfigured = { decision ->
+                authDecision = decision
+                pendingJobId?.let { id -> scope.launch { preparePending(id) } }
+                    ?: run { destination = Destination.AUTH }
+            },
         )
         Destination.AUTH -> AuthScreen(
-            viewModel = remember { AuthViewModel(container) },
+            viewModel = authViewModel,
             error = authError,
             modeDecision = authDecision,
+            launchOidc = launchOidc,
             onAuthenticated = {
                 scope.launch {
                     requestNotificationPermission()
                     AuthViewModel(container).resumeTransfers()
-                    destination = if (incoming != null) Destination.INCOMING else Destination.HOME
-                    refreshKey++
+                    destination = Destination.HOME
                 }
             },
         )
         Destination.HOME -> HomeScreen(
             viewModel = remember { HomeViewModel(container) },
             onSettings = { destination = Destination.SETTINGS },
-            onChanged = { refreshKey++ },
-        )
-        Destination.INCOMING -> IncomingBookScreen(
-            input = requireNotNull(incoming),
-            viewModel = remember { IncomingBookViewModel(container) },
-            resolver = context.contentResolver,
             requestNotificationPermission = requestNotificationPermission,
-            onAuthRequired = { id -> pendingJobId = id; destination = Destination.AUTH },
-            onDone = { destination = Destination.HOME },
-            onError = { incomingError = it; destination = Destination.ERROR },
+            notificationPermissionDenied = notificationPermissionDenied,
         )
         Destination.SETTINGS -> SettingsScreen(
             viewModel = remember { SettingsViewModel(container) },
@@ -126,7 +166,7 @@ fun AppNavHost(
         )
         Destination.ERROR -> ErrorScreen(
             message = incomingError ?: "Unable to open book",
-            onBack = { destination = Destination.HOME },
+            onBack = { refreshKey++ },
         )
     }
 }
@@ -157,72 +197,103 @@ fun OnboardingScreen(viewModel: OnboardingViewModel, onConfigured: (AuthModeDeci
 }
 
 @Composable
-fun AuthScreen(viewModel: AuthViewModel, error: String?, modeDecision: AuthModeDecision? = null, onAuthenticated: () -> Unit) {
+fun AuthScreen(
+    viewModel: AuthViewModel,
+    error: String?,
+    modeDecision: AuthModeDecision? = null,
+    launchOidc: (Intent) -> Unit,
+    onAuthenticated: () -> Unit,
+) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var message by remember { mutableStateOf(error) }
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     Scaffold(topBar = { TopAppBar(title = { Text("Sign in") }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(username, { username = it }, label = { Text("Username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(password, { password = it }, label = { Text("Password") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                password,
+                { password = it },
+                label = { Text("Password") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth(),
+            )
             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            if (modeDecision?.mode != AuthMode.OIDC) Button(onClick = { scope.launch { viewModel.login(username, password).fold({ onAuthenticated() }, { message = it.message }) } }, modifier = Modifier.fillMaxWidth()) { Text("Sign in") }
-            if (modeDecision?.mode != AuthMode.LOCAL) OutlinedButton(onClick = { scope.launch { viewModel.startOidc().fold({ context.startActivity(it) }, { message = it.message }) } }, modifier = Modifier.fillMaxWidth()) { Text("Sign in with OIDC") }
+            if (modeDecision?.mode != AuthMode.OIDC) Button(onClick = {
+                scope.launch {
+                    if (modeDecision?.requiresUserChoice == true) viewModel.selectMode(AuthMode.LOCAL)
+                    viewModel.login(username, password).fold({ onAuthenticated() }, { message = it.message })
+                }
+            }, modifier = Modifier.fillMaxWidth()) { Text("Sign in") }
+            if (modeDecision?.mode != AuthMode.LOCAL) OutlinedButton(onClick = {
+                scope.launch {
+                    if (modeDecision?.requiresUserChoice == true) viewModel.selectMode(AuthMode.OIDC)
+                    viewModel.startOidc().fold(launchOidc, { message = it.message })
+                }
+            }, modifier = Modifier.fillMaxWidth()) { Text("Sign in with OIDC") }
         }
     }
 }
 
 @Composable
-fun HomeScreen(viewModel: HomeViewModel, onSettings: () -> Unit, onChanged: () -> Unit) {
-    var jobs by remember { mutableStateOf<List<UploadJobEntity>>(emptyList()) }
+fun HomeScreen(
+    viewModel: HomeViewModel,
+    onSettings: () -> Unit,
+    requestNotificationPermission: () -> Unit,
+    notificationPermissionDenied: Boolean,
+) {
+    val jobs by viewModel.jobs().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
-    LaunchedEffect(Unit) { jobs = viewModel.jobs() }
     Scaffold(topBar = { TopAppBar(title = { Text("Grimmory Uploader") }, actions = { TextButton(onSettings) { Text("Settings") } }) }) { padding ->
         if (jobs.isEmpty()) {
-            Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), verticalArrangement = Arrangement.Center) { Text("No transfers") }
+            Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), verticalArrangement = Arrangement.Center) {
+                Text("No transfers")
+                if (notificationPermissionDenied) Text("Notifications are disabled; background progress may be unavailable.")
+            }
         } else {
             LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
+                if (notificationPermissionDenied) {
+                    item { Text("Notifications are disabled; background progress may be unavailable.") }
+                }
                 items(jobs, key = { it.id }) { job ->
                     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
                         Text(job.displayName, style = MaterialTheme.typography.titleMedium)
                         Text(job.failureReason ?: job.state.label)
-                        if (job.state == UploadJobState.FAILED) TextButton(onClick = { scope.launch { viewModel.retry(job); jobs = viewModel.jobs(); onChanged() } }) { Text("Retry") }
-                        if (job.state in setOf(UploadJobState.STAGED, UploadJobState.AWAITING_AUTH, UploadJobState.QUEUED, UploadJobState.RUNNING)) TextButton(onClick = { scope.launch { viewModel.cancel(job); jobs = viewModel.jobs(); onChanged() } }) { Text("Cancel") }
+                        job.progressStage?.let { stage ->
+                            Text(runCatching { TransferStage.valueOf(stage).label }.getOrDefault(stage))
+                            if (job.progressTotal > 0) {
+                                LinearProgressIndicator(
+                                    progress = { (job.progressCurrent.toFloat() / job.progressTotal).coerceIn(0f, 1f) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            } else if (job.state == UploadJobState.RUNNING) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                        if (job.state == UploadJobState.FAILED) TextButton(onClick = {
+                            requestNotificationPermission()
+                            scope.launch { viewModel.retry(job) }
+                        }) { Text("Retry") }
+                        if (job.state == UploadJobState.AWAITING_CLEARTEXT) TextButton(onClick = {
+                            requestNotificationPermission()
+                            scope.launch { viewModel.confirmCleartext(job) }
+                        }) { Text("Allow HTTP") }
+                        if (
+                            job.state in setOf(
+                                UploadJobState.STAGED,
+                                UploadJobState.AWAITING_AUTH,
+                                UploadJobState.AWAITING_CLEARTEXT,
+                                UploadJobState.QUEUED,
+                                UploadJobState.RUNNING,
+                            )
+                        ) TextButton(onClick = { scope.launch { viewModel.cancel(job) } }) { Text("Cancel") }
                         HorizontalDivider()
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-fun IncomingBookScreen(
-    input: IncomingInput,
-    viewModel: IncomingBookViewModel,
-    resolver: ContentResolver,
-    requestNotificationPermission: () -> Unit,
-    onAuthRequired: (Long) -> Unit,
-    onDone: () -> Unit,
-    onError: (String) -> Unit,
-) {
-    var status by remember { mutableStateOf("Saving incoming book…") }
-    var started by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    LaunchedEffect(input) {
-        if (started) return@LaunchedEffect
-        started = true
-        viewModel.persistAndPrepare(input, resolver, requestNotificationPermission).fold(
-            { preparation -> if (preparation.requiresAuth) onAuthRequired(preparation.job.id) else { status = "Transfer scheduled"; onDone() } },
-            { onError(it.message ?: "Unable to prepare upload") },
-        )
-    }
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
-        CircularProgressIndicator()
-        Text(input.displayName, Modifier.padding(top = 16.dp))
-        Text(status)
     }
 }
 
@@ -236,6 +307,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onSaved: () -> Unit) {
     var recompress by remember { mutableStateOf(true) }
     var httpConfirmed by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var confirmServerChange by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { viewModel.current().also { settings -> url = settings.serverUrl.orEmpty(); libraryId = settings.libraryId.toString(); pathId = settings.pathId.toString(); mode = settings.authMode; recompress = settings.recompressEpub; httpConfirmed = settings.httpConfirmed; loaded = true } }
     if (!loaded) return
@@ -251,15 +323,52 @@ fun SettingsScreen(viewModel: SettingsViewModel, onSaved: () -> Unit) {
             item { Row { Checkbox(recompress, { recompress = it }); Text("Recompress EPUB", Modifier.padding(top = 12.dp)) } }
             if (url.trim().lowercase().startsWith("http://")) item { Row { Checkbox(httpConfirmed, { httpConfirmed = it }); Text("Allow cleartext HTTP", Modifier.padding(top = 12.dp)) } }
             error?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
-            item { Button(onClick = { scope.launch { runCatching { viewModel.save(url, mode, libraryId.toInt(), pathId.toInt(), recompress, httpConfirmed) }.fold({ onSaved() }, { error = it.message }) } }, modifier = Modifier.fillMaxWidth()) { Text("Save") } }
+            item { Button(onClick = {
+                scope.launch {
+                    val library = libraryId.toIntOrNull()
+                    val path = pathId.toIntOrNull()
+                    if (library == null || path == null) {
+                        error = "Library ID and path ID must be integers"
+                        return@launch
+                    }
+                    runCatching { viewModel.save(url, mode, library, path, recompress, httpConfirmed) }
+                        .fold(
+                            { onSaved() },
+                            {
+                                if (it === ServerChangeConfirmationRequired) confirmServerChange = true
+                                else error = it.message
+                            },
+                        )
+                }
+            }, modifier = Modifier.fillMaxWidth()) { Text("Save") } }
         }
+    }
+    if (confirmServerChange) {
+        AlertDialog(
+            onDismissRequest = { confirmServerChange = false },
+            title = { Text("Change Grimmory server?") },
+            text = { Text("Pending transfers for the old server will be cancelled and its sign-in tokens removed.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmServerChange = false
+                    scope.launch {
+                        val library = libraryId.toIntOrNull() ?: return@launch
+                        val path = pathId.toIntOrNull() ?: return@launch
+                        runCatching {
+                            viewModel.save(url, mode, library, path, recompress, httpConfirmed, confirmServerChange = true)
+                        }.fold({ onSaved() }, { error = it.message })
+                    }
+                }) { Text("Change server") }
+            },
+            dismissButton = { TextButton(onClick = { confirmServerChange = false }) { Text("Cancel") } },
+        )
     }
 }
 
 @Composable
 private fun ErrorScreen(message: String, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
-        Text("Unable to open book", style = MaterialTheme.typography.headlineSmall)
+        Text("Something went wrong", style = MaterialTheme.typography.headlineSmall)
         Text(message, Modifier.padding(vertical = 12.dp))
         Button(onBack) { Text("Back") }
     }
@@ -269,9 +378,18 @@ private val UploadJobState.label: String
     get() = when (this) {
         UploadJobState.STAGED -> "Ready to upload"
         UploadJobState.AWAITING_AUTH -> "Sign-in required"
+        UploadJobState.AWAITING_CLEARTEXT -> "HTTP confirmation required"
         UploadJobState.QUEUED -> "Queued"
         UploadJobState.RUNNING -> "Uploading"
         UploadJobState.SUCCEEDED -> "Complete"
         UploadJobState.FAILED -> "Failed"
         UploadJobState.CANCELLED -> "Cancelled"
+    }
+
+private val TransferStage.label: String
+    get() = when (this) {
+        TransferStage.DOWNLOAD -> "Downloading"
+        TransferStage.VALIDATION -> "Validating"
+        TransferStage.RECOMPRESSION -> "Recompressing"
+        TransferStage.UPLOAD -> "Uploading"
     }

@@ -6,13 +6,18 @@ import android.net.Uri
 import io.github.kemko.grimmoryuploader.data.network.GrimmoryApi
 import io.github.kemko.grimmoryuploader.data.network.OidcCallbackRequest
 import net.openid.appauth.AuthorizationRequest
+import net.openid.appauth.AuthorizationException
+import net.openid.appauth.AuthorizationResponse
 import net.openid.appauth.AuthorizationService
 import net.openid.appauth.AuthorizationServiceConfiguration
 import net.openid.appauth.ResponseTypeValues
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class OidcPendingRequest(
     val state: String,
     val codeVerifier: String,
@@ -49,11 +54,11 @@ class OidcCoordinator(
     context: Context,
     private val api: GrimmoryApi,
     private val auth: AuthRepository,
+    private val pendingStore: OidcPendingStore,
     private val redirectUri: String = "io.github.kemko.grimmoryuploader:/oauth2redirect",
     private val authorizationIntentFactory: ((OidcAuthorizationData) -> Intent)? = null,
 ) {
     private val authorizationService = lazy { AuthorizationService(context.applicationContext) }
-    private var pending: OidcPendingRequest? = null
 
     suspend fun start(): Intent {
         val stateResponse = api.oidcState()
@@ -62,12 +67,14 @@ class OidcCoordinator(
         val authorizationEndpoint = stateResponse.authorizationEndpoint
             ?: discovery?.authorizationEndpoint
             ?: error("OIDC authorization endpoint is missing")
+        requireSecureOidcUrl(authorizationEndpoint)
         val clientId = stateResponse.clientId ?: error("OIDC client id is missing")
-        val redirect = stateResponse.redirectUri ?: redirectUri.toString()
+        val redirect = stateResponse.redirectUri ?: redirectUri
+        check(redirect == redirectUri) { "Grimmory returned an unsupported OIDC redirect URI" }
         val verifier = Pkce.verifier()
         val nonce = Pkce.nonce()
         val challenge = Pkce.challenge(verifier)
-        pending = OidcPendingRequest(state, verifier, nonce, redirect)
+        pendingStore.writePendingOidc(OidcPendingRequest(state, verifier, nonce, redirect))
         authorizationIntentFactory?.let {
             return it(
                 OidcAuthorizationData(
@@ -105,12 +112,27 @@ class OidcCoordinator(
         )
     }
 
+    suspend fun handleAuthorizationResult(intent: Intent?) {
+        if (intent == null) {
+            pendingStore.clearPendingOidc()
+            error("OIDC sign-in was cancelled")
+        }
+        val data = intent
+        val response = AuthorizationResponse.fromIntent(data)
+        val exception = AuthorizationException.fromIntent(data)
+        handleCallback(
+            state = response?.state,
+            error = exception?.errorDescription ?: exception?.error,
+            code = response?.authorizationCode,
+        )
+    }
+
     suspend fun handleCallback(state: String?, error: String?, code: String?) {
-        val request = pending ?: kotlin.error("No pending OIDC request")
+        val request = pendingStore.readPendingOidc() ?: kotlin.error("No pending OIDC request")
         check(state == request.state) { "OIDC state mismatch" }
-        check(error == null) { "OIDC authorization failed: $error" }
-        val authorizationCode = code ?: error("OIDC code is missing")
         try {
+            check(error == null) { "OIDC authorization failed: $error" }
+            val authorizationCode = code ?: error("OIDC code is missing")
             auth.accept(
                 api.oidcCallback(
                     OidcCallbackRequest(
@@ -123,11 +145,18 @@ class OidcCoordinator(
                 ),
             )
         } finally {
-            pending = null
+            pendingStore.clearPendingOidc()
         }
     }
 
     fun close() {
         if (authorizationService.isInitialized()) authorizationService.value.dispose()
+    }
+
+    private fun requireSecureOidcUrl(value: String) {
+        val url = value.toHttpUrlOrNull() ?: error("Invalid OIDC endpoint")
+        check(url.scheme == "https" || url.host in setOf("127.0.0.1", "localhost")) {
+            "OIDC endpoints must use HTTPS"
+        }
     }
 }

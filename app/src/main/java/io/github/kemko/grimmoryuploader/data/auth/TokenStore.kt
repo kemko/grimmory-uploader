@@ -9,6 +9,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -25,6 +27,12 @@ interface TokenStore {
     suspend fun read(): TokenPair?
     suspend fun write(tokens: TokenPair)
     suspend fun clear()
+}
+
+interface OidcPendingStore {
+    suspend fun readPendingOidc(): OidcPendingRequest?
+    suspend fun writePendingOidc(request: OidcPendingRequest)
+    suspend fun clearPendingOidc()
 }
 
 @Serializable
@@ -56,32 +64,68 @@ class AesGcmTokenCipher(private val key: SecretKey) {
 class EncryptedTokenStore(
     context: Context,
     private val json: Json = Json,
-) : TokenStore {
+    tokenCipher: AesGcmTokenCipher? = null,
+) : TokenStore, OidcPendingStore {
     private val file = File(context.noBackupFilesDir, "auth.tokens")
-    private val cipher = AesGcmTokenCipher(loadOrCreateKey())
+    private val pendingOidcFile = File(context.noBackupFilesDir, "auth.oidc")
+    private val cipher = tokenCipher ?: AesGcmTokenCipher(loadOrCreateKey())
 
     override suspend fun read(): TokenPair? = withContext(Dispatchers.IO) {
-        if (!file.exists()) return@withContext null
-        val stored = json.decodeFromString<StoredTokens>(
-            cipher.decrypt(file.readBytes()).decodeToString(),
-        )
-        TokenPair(stored.accessToken, stored.refreshToken, stored.expiresAtMillis)
+        readEncrypted<StoredTokens>(file)?.let {
+            TokenPair(it.accessToken, it.refreshToken, it.expiresAtMillis)
+        }
     }
 
     override suspend fun write(tokens: TokenPair) = withContext(Dispatchers.IO) {
-        file.parentFile?.mkdirs()
-        val temporary = File(file.parentFile, "${file.name}.tmp")
         val payload = StoredTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresAtMillis)
-        FileOutputStream(temporary).use { output ->
-            output.write(cipher.encrypt(json.encodeToString(payload).encodeToByteArray()))
-            output.fd.sync()
-        }
-        check(temporary.renameTo(file)) { "Unable to replace encrypted token store" }
+        writeEncrypted(file, payload)
     }
 
     override suspend fun clear() = withContext(Dispatchers.IO) {
         file.delete()
         Unit
+    }
+
+    override suspend fun readPendingOidc(): OidcPendingRequest? = withContext(Dispatchers.IO) {
+        readEncrypted<OidcPendingRequest>(pendingOidcFile)
+    }
+
+    override suspend fun writePendingOidc(request: OidcPendingRequest) = withContext(Dispatchers.IO) {
+        writeEncrypted(pendingOidcFile, request)
+    }
+
+    override suspend fun clearPendingOidc() = withContext(Dispatchers.IO) {
+        pendingOidcFile.delete()
+        Unit
+    }
+
+    private inline fun <reified T> readEncrypted(source: File): T? {
+        if (!source.exists()) return null
+        return runCatching {
+            json.decodeFromString<T>(cipher.decrypt(source.readBytes()).decodeToString())
+        }.getOrElse {
+            source.delete()
+            null
+        }
+    }
+
+    private inline fun <reified T> writeEncrypted(target: File, value: T) {
+        target.parentFile?.mkdirs()
+        val temporary = File(target.parentFile, "${target.name}.tmp")
+        try {
+            FileOutputStream(temporary).use { output ->
+                output.write(cipher.encrypt(json.encodeToString(value).encodeToByteArray()))
+                output.fd.sync()
+            }
+            Files.move(
+                temporary.toPath(),
+                target.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+        } finally {
+            temporary.delete()
+        }
     }
 
     private fun loadOrCreateKey(): SecretKey {

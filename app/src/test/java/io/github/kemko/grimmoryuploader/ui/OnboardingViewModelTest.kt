@@ -31,7 +31,11 @@ class OnboardingViewModelTest {
                 },
             )
             val api = GrimmoryApi(OkHttpClient(), { io.github.kemko.grimmoryuploader.data.network.ServerUrl.parse(server.url("/grimmory/").toString()) })
-            val viewModel = OnboardingViewModel(settings, AuthRepository(api, TestTokenStore()))
+            val auth = AuthRepository(api, TestTokenStore())
+            val viewModel = OnboardingViewModel(settings) {
+                auth.healthcheck()
+                runCatching { auth.publicSettings() }.getOrNull()
+            }
 
             val result = viewModel.configureServer(server.url("/grimmory/").toString(), confirmCleartext = true).getOrThrow()
 
@@ -51,9 +55,41 @@ class OnboardingViewModelTest {
             },
         )
         val api = GrimmoryApi(OkHttpClient(), { io.github.kemko.grimmoryuploader.data.network.ServerUrl.parse("https://example.com") })
-        val viewModel = OnboardingViewModel(settings, AuthRepository(api, TestTokenStore()))
+        val auth = AuthRepository(api, TestTokenStore())
+        val viewModel = OnboardingViewModel(settings) {
+            auth.healthcheck()
+            runCatching { auth.publicSettings() }.getOrNull()
+        }
 
         assertFalse(viewModel.configureServer("http://example.com", confirmCleartext = false).isSuccess)
         assertEquals(null, settings.current().serverUrl)
+    }
+
+    @Test
+    fun failedHealthcheckDoesNotPersistCandidateServer() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(503))
+        server.start()
+        try {
+            val settings = AppSettingsRepository(
+                PreferenceDataStoreFactory.create {
+                    Files.createTempDirectory("onboarding-failure").resolve("settings.preferences_pb").toFile()
+                },
+            )
+            val api = GrimmoryApi(
+                OkHttpClient(),
+                { io.github.kemko.grimmoryuploader.data.network.ServerUrl.parse(server.url("/").toString()) },
+            )
+            val auth = AuthRepository(api, TestTokenStore())
+            val viewModel = OnboardingViewModel(settings) {
+                auth.healthcheck()
+                auth.publicSettings()
+            }
+
+            assertFalse(viewModel.configureServer(server.url("/").toString(), confirmCleartext = true).isSuccess)
+            assertEquals(null, settings.current().serverUrl)
+        } finally {
+            server.shutdown()
+        }
     }
 }
