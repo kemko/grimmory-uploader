@@ -215,17 +215,17 @@ DJVU не поддерживается и не регистрируется ка
 - Create: `.release-please-manifest.json`
 - Create: `app/src/test/**/build/VersioningTest.kt`
 
-- [ ] Добавить Make targets `bootstrap-check`, `format`, `format-check`, `lint`, `test`, `coverage`, `security`, `build`, `ci` и `release-apk`; `make ci` должен быть единственной проверочной точкой CI.
-- [ ] В `lint` включить ktlint, Android Lint и actionlint; в `security` — Gradle verification/locking и OWASP Dependency-Check с fail threshold.
-- [ ] Настроить Kover с минимумом 80% line coverage для собственного production-кода и исключением сгенерированных Compose/Room-классов.
-- [ ] Настроить CI на pull request и push: JDK 26, SDK 36, Gradle cache, `make ci`, сохранение test/lint/security reports и debug APK.
-- [ ] Закрепить GitHub Actions на commit SHA и выдать workflow минимальные permissions.
-- [ ] Настроить Dependabot для Gradle и GitHub Actions.
-- [ ] Настроить Release Please и Conventional Commits; хранить SemVer в `version.properties`, а Android `versionCode` вычислять детерминированно из stable SemVer.
-- [ ] После создания release собирать подписанный release APK из base64 keystore и GitHub Secrets, вычислять SHA-256 и прикреплять оба файла к GitHub Release.
-- [ ] Не выводить signing secrets в лог и гарантированно удалять временный keystore в `always()` step.
-- [ ] Добавить тесты парсинга version properties, versionCode и release build configuration.
-- [ ] Запустить `make ci`; все проверки должны пройти до Task 7.
+- [x] Добавить Make targets `bootstrap-check`, `format`, `format-check`, `lint`, `test`, `coverage`, `security`, `build`, `ci` и `release-apk`; `make ci` должен быть единственной проверочной точкой CI.
+- [x] В `lint` включить ktlint, Android Lint и actionlint; в `security` — Gradle verification/locking и OWASP Dependency-Check с fail threshold.
+- [x] Настроить Kover с минимумом 80% line coverage для собственного production-кода и исключением сгенерированных Compose/Room-классов.
+- [x] Настроить CI на pull request и push: JDK 26, SDK 36, Gradle cache, `make ci`, сохранение test/lint/security reports и debug APK.
+- [x] Закрепить GitHub Actions на commit SHA и выдать workflow минимальные permissions.
+- [x] Настроить Dependabot для Gradle и GitHub Actions.
+- [x] Настроить Release Please и Conventional Commits; хранить SemVer в `version.properties`, а Android `versionCode` вычислять детерминированно из stable SemVer.
+- [x] После создания release собирать подписанный release APK из base64 keystore и GitHub Secrets, вычислять SHA-256 и прикреплять оба файла к GitHub Release.
+- [x] Не выводить signing secrets в лог и гарантированно удалять временный keystore в `always()` step.
+- [x] Добавить тесты парсинга version properties, versionCode и release build configuration.
+- [x] Запустить `make ci`; все проверки должны пройти до Task 7.
 
 ### Task 7: Verify acceptance criteria
 
