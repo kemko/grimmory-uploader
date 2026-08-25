@@ -31,3 +31,9 @@ Task-specific validation must pass before the next plan task starts. Add or upda
 ## Network commands
 
 The sandbox has no network access. Any command that may download dependencies, contact a remote API, or otherwise require network access must be started immediately with an escalation request. Do not retry the same network command inside the sandbox first.
+
+## User documentation
+
+- Keep `README.md` aligned with the supported FB2, FB2.ZIP, EPUB, PDF, Share/Open with, URL, authentication, progress, cancellation, staging, and settings behavior.
+- Document broad MIME filters together with mandatory runtime content validation; extensions and MIME types are never format proof.
+- Keep `CHANGELOG.md` concise and use the repository's Conventional Commits/release terminology for user-visible changes.
