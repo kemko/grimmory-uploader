@@ -6,9 +6,14 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import io.github.kemko.grimmoryuploader.data.auth.AuthInterceptor
+import io.github.kemko.grimmoryuploader.data.auth.AuthRepository
+import io.github.kemko.grimmoryuploader.data.auth.EncryptedTokenStore
+import io.github.kemko.grimmoryuploader.data.auth.OidcCoordinator
+import io.github.kemko.grimmoryuploader.data.auth.TokenStore
+import io.github.kemko.grimmoryuploader.data.network.GrimmoryApi
+import io.github.kemko.grimmoryuploader.data.settings.AppSettingsRepository
 import okhttp3.OkHttpClient
-
-interface AuthComponent
 
 interface UploadComponent
 
@@ -25,8 +30,31 @@ class AppContainer(context: Context) {
         "grimmory.db",
     ).build()
 
-    val httpClient: OkHttpClient = OkHttpClient.Builder().build()
+    val tokenStore: TokenStore = EncryptedTokenStore(appContext)
 
-    val auth: AuthComponent = object : AuthComponent {}
+    val settings: AppSettingsRepository = AppSettingsRepository(settingsDataStore) {
+        tokenStore.clear()
+    }
+
+    private val rawHttpClient: OkHttpClient = OkHttpClient.Builder().build()
+
+    private val rawApi: GrimmoryApi = GrimmoryApi(rawHttpClient, serverUrl = {
+        settings.requireCleartextConfirmation()
+        settings.requireServerUrl()
+    })
+
+    val auth: AuthRepository = AuthRepository(rawApi, tokenStore)
+
+    val httpClient: OkHttpClient = rawHttpClient.newBuilder()
+        .addInterceptor(AuthInterceptor(auth))
+        .build()
+
+    val api: GrimmoryApi = GrimmoryApi(httpClient, serverUrl = {
+        settings.requireCleartextConfirmation()
+        settings.requireServerUrl()
+    })
+
+    val oidc: OidcCoordinator = OidcCoordinator(appContext, api, auth)
+
     val upload: UploadComponent = object : UploadComponent {}
 }

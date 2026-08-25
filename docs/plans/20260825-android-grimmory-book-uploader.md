@@ -100,15 +100,15 @@ DJVU не поддерживается и не регистрируется ка
 - Create: `app/src/test/**/auth/*`
 - Create: `app/src/test/**/network/*`
 
-- [ ] Сохранять в DataStore нормализованный server URL, `libraryId=1`, `pathId=1`, включённое пересжатие EPUB, HTTP-подтверждение и режим авторизации `AUTO/LOCAL/OIDC`.
-- [ ] Проверять только HTTP(S)-адреса, поддержать сервер под path prefix, удалять credentials при смене сервера и требовать отдельного подтверждения cleartext HTTP.
-- [ ] Реализовать healthcheck, public settings, login, refresh, current-user и multipart upload API.
-- [ ] Хранить access/refresh tokens зашифрованными AES-GCM с ключом Android Keystore; не сохранять логин или пароль.
-- [ ] Сериализовать параллельные refresh-запросы; перед запросом обновлять истёкший access token, на 401 обновлять и повторять запрос только один раз.
-- [ ] Реализовать AUTO-выбор: forced OIDC, только local либо выбор обоих режимов; при недоступном public settings использовать сохранённое ручное переопределение.
-- [ ] Реализовать OIDC discovery, server-generated state, PKCE, nonce, Custom Tab callback и обмен кода через `/auth/oidc/mobile/callback`.
-- [ ] Покрыть тестами URL-нормализацию, HTTP-защиту, шифрованное хранилище, конкурентный refresh, 401 retry, определение auth mode и OIDC state/PKCE/callback.
-- [ ] Запустить `./gradlew testDebugUnitTest`; все тесты должны пройти до Task 3.
+- [x] Сохранять в DataStore нормализованный server URL, `libraryId=1`, `pathId=1`, включённое пересжатие EPUB, HTTP-подтверждение и режим авторизации `AUTO/LOCAL/OIDC`.
+- [x] Проверять только HTTP(S)-адреса, поддержать сервер под path prefix, удалять credentials при смене сервера и требовать отдельного подтверждения cleartext HTTP.
+- [x] Реализовать healthcheck, public settings, login, refresh, current-user и multipart upload API.
+- [x] Хранить access/refresh tokens зашифрованными AES-GCM с ключом Android Keystore; не сохранять логин или пароль.
+- [x] Сериализовать параллельные refresh-запросы; перед запросом обновлять истёкший access token, на 401 обновлять и повторять запрос только один раз.
+- [x] Реализовать AUTO-выбор: forced OIDC, только local либо выбор обоих режимов; при недоступном public settings использовать сохранённое ручное переопределение.
+- [x] Реализовать OIDC discovery, server-generated state, PKCE, nonce, Custom Tab callback и обмен кода через `/auth/oidc/mobile/callback`.
+- [x] Покрыть тестами URL-нормализацию, HTTP-защиту, шифрованное хранилище, конкурентный refresh, 401 retry, определение auth mode и OIDC state/PKCE/callback.
+- [x] Запустить `./gradlew testDebugUnitTest`; все тесты должны пройти до Task 3.
 
 ### Task 3: Реализовать приём, очередь, распознавание и преобразование книг
 
