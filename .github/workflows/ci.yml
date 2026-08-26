@@ -21,9 +21,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       - name: Install actionlint
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-      - name: Install Android SDK 36
-        run: |
-          android sdk install "platforms/android-36" "build-tools/36.0.0"
       - name: Run CI gate
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
