@@ -9,7 +9,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GrimmoryApiTest {
@@ -104,6 +106,7 @@ class GrimmoryApiTest {
                 }
 
             assertEquals(307, error.statusCode)
+            assertEquals(io.github.kemko.grimmoryuploader.data.network.ApiErrorSource.GRIMMORY, error.source)
             assertEquals(0, target.requestCount)
         } finally {
             origin.shutdown()
@@ -129,9 +132,116 @@ class GrimmoryApiTest {
                         runBlocking { api.healthcheck() }
                     }
                 assertEquals("Grimmory response is too large", error.message)
+                assertEquals(io.github.kemko.grimmoryuploader.data.network.ApiErrorSource.GRIMMORY, error.source)
             }
         } finally {
             server.shutdown()
         }
     }
+
+    @Test
+    fun extractsNestedOAuthErrorFromGrimmoryEnvelope() =
+        runBlocking {
+            val server = MockWebServer()
+            server.enqueue(
+                MockResponse().setResponseCode(502).setBody(
+                    """{"status":502,"message":"OIDC callback failed","timestamp":"now","details":{"error":"invalid_client","error_description":"Client authentication failed"}}""",
+                ),
+            )
+            server.start()
+            try {
+                val api = GrimmoryApi(OkHttpClient(), serverUrl = { ServerUrl.parse(server.url("/").toString()) })
+
+                val error =
+                    assertThrows(ApiException::class.java) {
+                        runBlocking { api.login("user", "password") }
+                    }
+
+                assertEquals(502, error.statusCode)
+                assertEquals(io.github.kemko.grimmoryuploader.data.network.ApiErrorSource.GRIMMORY, error.source)
+                assertEquals("invalid_client", error.errorCode)
+                assertEquals("Client authentication failed", error.errorDescription)
+                assertEquals("Client authentication failed", error.message)
+            } finally {
+                server.shutdown()
+            }
+        }
+
+    @Test
+    fun extractsDirectProviderOAuthErrorFromDiscovery() =
+        runBlocking {
+            val server = MockWebServer()
+            server.enqueue(
+                MockResponse().setResponseCode(401).setBody(
+                    """{"error":"invalid_client","error_description":"Unknown client"}""",
+                ),
+            )
+            server.start()
+            try {
+                val api = GrimmoryApi(OkHttpClient(), serverUrl = { ServerUrl.parse(server.url("/").toString()) })
+
+                val error =
+                    assertThrows(ApiException::class.java) {
+                        runBlocking { api.oidcDiscovery(server.url("/").toString()) }
+                    }
+
+                assertEquals(io.github.kemko.grimmoryuploader.data.network.ApiErrorSource.OIDC_PROVIDER, error.source)
+                assertEquals("invalid_client", error.errorCode)
+                assertEquals("Unknown client", error.errorDescription)
+                assertEquals("Unknown client", error.message)
+            } finally {
+                server.shutdown()
+            }
+        }
+
+    @Test
+    fun usesSafeFallbackForEmptyAndNonJsonBodies() =
+        runBlocking {
+            val server = MockWebServer()
+            server.enqueue(MockResponse().setResponseCode(503).setBody("<html>provider is down</html>"))
+            server.enqueue(MockResponse().setResponseCode(503))
+            server.start()
+            try {
+                val api = GrimmoryApi(OkHttpClient(), serverUrl = { ServerUrl.parse(server.url("/").toString()) })
+
+                val nonJson =
+                    assertThrows(ApiException::class.java) {
+                        runBlocking { api.healthcheck() }
+                    }
+                val empty =
+                    assertThrows(ApiException::class.java) {
+                        runBlocking { api.healthcheck() }
+                    }
+
+                assertEquals("Grimmory request failed", nonJson.message)
+                assertEquals("Grimmory request failed", empty.message)
+                assertNull(nonJson.errorCode)
+                assertTrue(nonJson.message!!.length <= 512)
+            } finally {
+                server.shutdown()
+            }
+        }
+
+    @Test
+    fun capsStructuredErrorMessages() =
+        runBlocking {
+            val server = MockWebServer()
+            server.enqueue(
+                MockResponse().setResponseCode(500).setBody(
+                    """{"message":"${"m".repeat(600)}"}""",
+                ),
+            )
+            server.start()
+            try {
+                val api = GrimmoryApi(OkHttpClient(), serverUrl = { ServerUrl.parse(server.url("/").toString()) })
+                val error =
+                    assertThrows(ApiException::class.java) {
+                        runBlocking { api.healthcheck() }
+                    }
+
+                assertEquals(512, error.message!!.length)
+            } finally {
+                server.shutdown()
+            }
+        }
 }

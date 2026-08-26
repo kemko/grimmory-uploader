@@ -2,6 +2,9 @@ package io.github.kemko.grimmoryuploader.data.network
 
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -10,9 +13,17 @@ import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okio.Buffer
 
+enum class ApiErrorSource {
+    GRIMMORY,
+    OIDC_PROVIDER,
+}
+
 class ApiException(
     val statusCode: Int,
     message: String,
+    val source: ApiErrorSource = ApiErrorSource.GRIMMORY,
+    val errorCode: String? = null,
+    val errorDescription: String? = null,
 ) : IllegalStateException(message)
 
 class GrimmoryApi(
@@ -60,6 +71,7 @@ class GrimmoryApi(
                 .url(issuerUrl.endpoint(".well-known/openid-configuration"))
                 .get()
                 .build(),
+            source = ApiErrorSource.OIDC_PROVIDER,
         )
     }
 
@@ -80,6 +92,7 @@ class GrimmoryApi(
                 .url(url)
                 .post(ByteArray(0).toRequestBody())
                 .build(),
+            source = ApiErrorSource.GRIMMORY,
         )
     }
 
@@ -136,6 +149,7 @@ class GrimmoryApi(
                 .url(serverUrl().endpoint(path))
                 .get()
                 .build(),
+            source = ApiErrorSource.GRIMMORY,
         )
 
     private suspend inline fun <reified T, reified B> post(
@@ -149,37 +163,90 @@ class GrimmoryApi(
                 .url(serverUrl().endpoint(path))
                 .post(requestBody)
                 .build(),
+            source = ApiErrorSource.GRIMMORY,
         )
     }
 
-    private suspend inline fun <reified T> executeJson(request: Request): T = json.decodeFromString(execute(request))
+    private suspend inline fun <reified T> executeJson(
+        request: Request,
+        source: ApiErrorSource = ApiErrorSource.GRIMMORY,
+    ): T = json.decodeFromString(execute(request, source))
 
     private suspend fun executeSuccess(request: Request) {
-        execute(request)
+        execute(request, ApiErrorSource.GRIMMORY)
     }
 
-    private suspend fun execute(request: Request): String =
+    private suspend fun execute(
+        request: Request,
+        source: ApiErrorSource,
+    ): String =
         client.newCall(request).await().use { response ->
-            val source = response.body.source()
+            val bodySource = response.body.source()
             val buffer = Buffer()
             var remaining = MAX_RESPONSE_BYTES + 1L
             while (remaining > 0) {
-                val read = source.read(buffer, minOf(remaining, DEFAULT_BUFFER_SIZE.toLong()))
+                val read = bodySource.read(buffer, minOf(remaining, DEFAULT_BUFFER_SIZE.toLong()))
                 if (read < 0) break
                 remaining -= read
             }
             val bytes = buffer.readByteArray()
             if (bytes.size > MAX_RESPONSE_BYTES) {
-                throw ApiException(response.code.takeIf { it >= 400 } ?: 502, "Grimmory response is too large")
+                throw ApiException(
+                    statusCode = response.code.takeIf { it >= 400 } ?: 502,
+                    message = "${source.label} response is too large",
+                    source = source,
+                )
             }
             val text = bytes.decodeToString()
             if (!response.isSuccessful) {
-                throw ApiException(response.code, text.take(512).ifBlank { "Grimmory request failed" })
+                throw parseApiException(response.code, text, source)
             }
             text
         }
 
+    private fun parseApiException(
+        statusCode: Int,
+        body: String,
+        source: ApiErrorSource,
+    ): ApiException {
+        val fallback = "${source.label} request failed"
+        val root = runCatching { json.parseToJsonElement(body) }.getOrNull()
+        val directOAuth = root?.asOAuthError()
+        val envelope = root?.let { runCatching { json.decodeFromJsonElement<GrimmoryErrorResponse>(it) }.getOrNull() }
+        val nestedOAuth = envelope?.details?.asOAuthError()
+        val oauth = directOAuth ?: nestedOAuth
+        val description = oauth?.errorDescription.safeMessage()
+        val message = description ?: envelope?.message.safeMessage() ?: oauth?.error.safeMessage() ?: fallback
+        return ApiException(
+            statusCode = statusCode,
+            message = message,
+            source = source,
+            errorCode = oauth?.error.safeMessage(),
+            errorDescription = description,
+        )
+    }
+
+    private fun JsonElement.asOAuthError(): OAuthErrorResponse? =
+        (this as? JsonObject)
+            ?.let { runCatching { json.decodeFromJsonElement<OAuthErrorResponse>(it) }.getOrNull() }
+            ?.takeIf { it.error != null || it.errorDescription != null }
+
+    private fun String?.safeMessage(): String? =
+        this
+            ?.replace(Regex("\\s+"), " ")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.take(MAX_ERROR_MESSAGE_CHARS)
+
+    private val ApiErrorSource.label: String
+        get() =
+            when (this) {
+                ApiErrorSource.GRIMMORY -> "Grimmory"
+                ApiErrorSource.OIDC_PROVIDER -> "OIDC provider"
+            }
+
     private companion object {
         const val MAX_RESPONSE_BYTES = 1024 * 1024
+        const val MAX_ERROR_MESSAGE_CHARS = 512
     }
 }

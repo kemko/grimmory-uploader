@@ -2,6 +2,7 @@ package io.github.kemko.grimmoryuploader.data.network
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 @Serializable data class PublicSettings(
     val oidcEnabled: Boolean = false,
@@ -51,4 +52,16 @@ import kotlinx.serialization.Serializable
     val redirectUri: String,
     val codeVerifier: String,
     val nonce: String,
+)
+
+@Serializable data class GrimmoryErrorResponse(
+    val status: Int? = null,
+    val message: String? = null,
+    val timestamp: String? = null,
+    val details: JsonElement? = null,
+)
+
+@Serializable data class OAuthErrorResponse(
+    val error: String? = null,
+    @SerialName("error_description") val errorDescription: String? = null,
 )
