@@ -222,15 +222,26 @@ class GrimmoryApi(
         val root = runCatching { json.parseToJsonElement(body) }.getOrNull()
         val directOAuth = root?.asOAuthError()
         val envelope = root?.let { runCatching { json.decodeFromJsonElement<GrimmoryErrorResponse>(it) }.getOrNull() }
-        val nestedOAuth = envelope?.details?.asOAuthError()
-        val oauth = directOAuth ?: nestedOAuth
-        val description = oauth?.errorDescription.safeMessage()
-        val message = description ?: envelope?.message.safeMessage() ?: oauth?.error.safeMessage() ?: fallback
+        val grimmoryCode =
+            envelope
+                ?.message
+                ?.takeIf { source == ApiErrorSource.GRIMMORY }
+                .grimmoryErrorCode()
+        val description = directOAuth?.errorDescription.safeMessage()
+        val message =
+            description
+                ?: if (grimmoryCode != null) {
+                    GRIMMORY_AUTH_ERROR_MESSAGE
+                } else {
+                    envelope?.message.safeMessage()
+                }
+                ?: directOAuth?.error.safeMessage()
+                ?: fallback
         return ApiException(
             statusCode = statusCode,
             message = message,
             source = source,
-            errorCode = oauth?.error.safeMessage(),
+            errorCode = directOAuth?.error.safeMessage() ?: grimmoryCode,
             errorDescription = description,
         )
     }
@@ -251,6 +262,37 @@ class GrimmoryApi(
             ?.let { runCatching { json.decodeFromJsonElement<OAuthErrorResponse>(it) }.getOrNull() }
             ?.takeIf { it.error != null || it.errorDescription != null }
 
+    private fun String?.grimmoryErrorCode(): String? {
+        val message = this ?: return null
+        return when {
+            message == "OIDC is not enabled" -> "oidc_disabled"
+            message == "OIDC is not properly configured" -> "oidc_misconfigured"
+            message == "Invalid redirect URI" -> "invalid_redirect_uri"
+            message == "Invalid or expired OIDC state parameter" -> "invalid_state"
+            message.startsWith("OIDC user '") &&
+                message.endsWith("' is not provisioned and auto-provisioning is disabled") -> "user_not_provisioned"
+            message.startsWith("Invalid token from OIDC provider:") -> "invalid_token"
+            message.startsWith("Cannot reach OIDC provider:") -> message.oauthErrorCode() ?: "provider_unreachable"
+            message.startsWith("Failed to exchange authorization code:") -> message.oauthErrorCode()
+            else -> null
+        }
+    }
+
+    private fun String.oauthErrorCode(): String? {
+        val fieldCode =
+            OAUTH_ERROR_FIELD
+                .find(this)
+                ?.groupValues
+                ?.get(1)
+                ?.lowercase()
+                ?.takeIf(OAUTH_ERROR_CODES::contains)
+        return fieldCode
+            ?: OAUTH_ERROR_TOKEN
+                .find(this)
+                ?.value
+                ?.lowercase()
+    }
+
     private fun String?.safeMessage(): String? =
         this
             ?.replace(Regex("\\s+"), " ")
@@ -268,5 +310,25 @@ class GrimmoryApi(
     private companion object {
         const val MAX_RESPONSE_BYTES = 1024 * 1024
         const val MAX_ERROR_MESSAGE_CHARS = 512
+        const val GRIMMORY_AUTH_ERROR_MESSAGE = "Grimmory authentication failed"
+        val OAUTH_ERROR_CODES =
+            setOf(
+                "invalid_client",
+                "invalid_grant",
+                "invalid_request",
+                "invalid_scope",
+                "unauthorized_client",
+                "unsupported_grant_type",
+            )
+        val OAUTH_ERROR_FIELD =
+            Regex(
+                """\\?[\"']error\\?[\"']\s*:\s*\\?[\"']([A-Za-z0-9_.:-]{1,64})\\?[\"']""",
+                RegexOption.IGNORE_CASE,
+            )
+        val OAUTH_ERROR_TOKEN =
+            Regex(
+                """(?<![A-Za-z0-9_.:-])(?:${OAUTH_ERROR_CODES.joinToString("|")})(?![A-Za-z0-9_.:-])""",
+                RegexOption.IGNORE_CASE,
+            )
     }
 }

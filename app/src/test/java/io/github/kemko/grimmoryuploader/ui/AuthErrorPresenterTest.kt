@@ -160,4 +160,21 @@ class AuthErrorPresenterTest {
         assertEquals("OIDC provider is unavailable.", error.description)
         assertNull(error.technicalCode)
     }
+
+    @Test
+    fun grimmoryProviderTransportFailurePreservesBoundary() {
+        val error =
+            AuthErrorPresenter.present(
+                ApiException(
+                    statusCode = 502,
+                    message = "Grimmory authentication failed",
+                    source = ApiErrorSource.GRIMMORY,
+                    errorCode = "provider_unreachable",
+                ),
+            )
+
+        assertEquals(AuthErrorSource.GRIMMORY_OIDC_PROVIDER, error.source)
+        assertEquals("Grimmory could not reach the OIDC provider.", error.description)
+        assertEquals("HTTP 502 · provider_unreachable", error.technicalCode)
+    }
 }

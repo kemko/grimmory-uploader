@@ -37,7 +37,7 @@ object AuthErrorPresenter {
         val source =
             when {
                 error.source == ApiErrorSource.OIDC_PROVIDER -> AuthErrorSource.OIDC_PROVIDER
-                code in setOf("invalid_client", "invalid_grant") -> AuthErrorSource.GRIMMORY_OIDC_PROVIDER
+                code in GRIMMORY_PROVIDER_CODES -> AuthErrorSource.GRIMMORY_OIDC_PROVIDER
                 else -> AuthErrorSource.GRIMMORY
             }
         val technicalCode = technicalCode(error.statusCode, code)
@@ -59,6 +59,13 @@ object AuthErrorPresenter {
                     source = source,
                     description = "The OIDC provider rejected the authorization code during Grimmory sign-in.",
                     action = "Start sign-in again and verify the redirect URI and PKCE settings.",
+                    technicalCode = technicalCode,
+                )
+            "provider_unreachable" ->
+                AuthErrorPresentation(
+                    source = source,
+                    description = "Grimmory could not reach the OIDC provider.",
+                    action = "Check the Issuer URI, DNS, firewall, and provider availability, then try again.",
                     technicalCode = technicalCode,
                 )
             "access_denied" ->
@@ -229,4 +236,15 @@ object AuthErrorPresenter {
             ?.lowercase()
 
     private fun Throwable.causes(): Sequence<Throwable> = generateSequence(this) { it.cause }
+
+    private val GRIMMORY_PROVIDER_CODES =
+        setOf(
+            "invalid_client",
+            "invalid_grant",
+            "invalid_request",
+            "invalid_scope",
+            "provider_unreachable",
+            "unauthorized_client",
+            "unsupported_grant_type",
+        )
 }

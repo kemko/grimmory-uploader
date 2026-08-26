@@ -3,13 +3,20 @@ package io.github.kemko.grimmoryuploader.network
 import io.github.kemko.grimmoryuploader.data.network.ApiErrorSource
 import io.github.kemko.grimmoryuploader.data.network.ApiException
 import io.github.kemko.grimmoryuploader.data.network.GrimmoryApi
+import io.github.kemko.grimmoryuploader.data.network.GrimmoryErrorResponse
+import io.github.kemko.grimmoryuploader.data.network.OidcCallbackRequest
 import io.github.kemko.grimmoryuploader.data.network.ServerUrl
+import io.github.kemko.grimmoryuploader.ui.auth.AuthErrorPresenter
+import io.github.kemko.grimmoryuploader.ui.auth.AuthErrorSource
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -141,12 +148,23 @@ class GrimmoryApiTest {
     }
 
     @Test
-    fun extractsNestedOAuthErrorFromGrimmoryEnvelope() =
+    fun extractsInvalidClientFromRealGrimmoryEnvelope() =
         runBlocking {
             val server = MockWebServer()
+            val providerBody =
+                """{"error":"invalid_client","error_description":"Client authentication failed"}"""
+            val serverMessage =
+                "Cannot reach OIDC provider: 401 Unauthorized on POST request for " +
+                    "\"https://pocket-id.example/token\": \"$providerBody\""
             server.enqueue(
                 MockResponse().setResponseCode(502).setBody(
-                    """{"status":502,"message":"OIDC callback failed","timestamp":"now","details":{"error":"invalid_client","error_description":"Client authentication failed"}}""",
+                    Json.encodeToString(
+                        GrimmoryErrorResponse(
+                            status = 502,
+                            message = serverMessage,
+                            timestamp = "2026-08-26T20:00:00",
+                        ),
+                    ),
                 ),
             )
             server.start()
@@ -155,14 +173,73 @@ class GrimmoryApiTest {
 
                 val error =
                     assertThrows(ApiException::class.java) {
-                        runBlocking { api.login("user", "password") }
+                        runBlocking { api.oidcCallback(oidcCallbackRequest) }
                     }
+                val presentation = AuthErrorPresenter.present(error)
 
                 assertEquals(502, error.statusCode)
                 assertEquals(io.github.kemko.grimmoryuploader.data.network.ApiErrorSource.GRIMMORY, error.source)
                 assertEquals("invalid_client", error.errorCode)
-                assertEquals("Client authentication failed", error.errorDescription)
-                assertEquals("Client authentication failed", error.message)
+                assertNull(error.errorDescription)
+                assertEquals("Grimmory authentication failed", error.message)
+                assertFalse(error.message!!.contains("pocket-id.example"))
+                assertEquals(AuthErrorSource.GRIMMORY_OIDC_PROVIDER, presentation.source)
+                assertEquals("The OIDC provider rejected Grimmory's client authentication.", presentation.description)
+                assertEquals("HTTP 502 · invalid_client", presentation.technicalCode)
+            } finally {
+                server.shutdown()
+            }
+        }
+
+    @Test
+    fun mapsRealGrimmoryOidcMessagesToInternalCodes() =
+        runBlocking {
+            val cases =
+                listOf(
+                    Triple(403, "OIDC is not enabled", "oidc_disabled"),
+                    Triple(403, "OIDC is not properly configured", "oidc_misconfigured"),
+                    Triple(400, "Invalid redirect URI", "invalid_redirect_uri"),
+                    Triple(400, "Invalid or expired OIDC state parameter", "invalid_state"),
+                    Triple(
+                        403,
+                        "OIDC user 'alice' is not provisioned and auto-provisioning is disabled",
+                        "user_not_provisioned",
+                    ),
+                    Triple(401, "Invalid token from OIDC provider: Invalid JWT", "invalid_token"),
+                    Triple(
+                        502,
+                        "Failed to exchange authorization code: invalid_grant Authorization code expired",
+                        "invalid_grant",
+                    ),
+                    Triple(502, "Cannot reach OIDC provider: Connection refused", "provider_unreachable"),
+                )
+            val server = MockWebServer()
+            cases.forEach { (status, message, _) ->
+                server.enqueue(
+                    MockResponse().setResponseCode(status).setBody(
+                        Json.encodeToString(
+                            GrimmoryErrorResponse(
+                                status = status,
+                                message = message,
+                                timestamp = "2026-08-26T20:00:00",
+                            ),
+                        ),
+                    ),
+                )
+            }
+            server.start()
+            try {
+                val api = GrimmoryApi(OkHttpClient(), serverUrl = { ServerUrl.parse(server.url("/").toString()) })
+
+                cases.forEach { (_, message, expectedCode) ->
+                    val error =
+                        assertThrows(ApiException::class.java) {
+                            runBlocking { api.oidcCallback(oidcCallbackRequest) }
+                        }
+
+                    assertEquals(message, expectedCode, error.errorCode)
+                    assertEquals("Grimmory authentication failed", error.message)
+                }
             } finally {
                 server.shutdown()
             }
@@ -282,4 +359,15 @@ class GrimmoryApiTest {
                 server.shutdown()
             }
         }
+
+    private companion object {
+        val oidcCallbackRequest =
+            OidcCallbackRequest(
+                code = "code",
+                state = "state",
+                redirectUri = "app:/callback",
+                codeVerifier = "verifier",
+                nonce = "nonce",
+            )
+    }
 }
