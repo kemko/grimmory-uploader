@@ -20,7 +20,7 @@ lint:
 	actionlint .github/workflows/*.yml
 
 test:
-	$(GRADLEW) testDebugUnitTest
+	$(GRADLEW) --no-configuration-cache --refresh-dependencies --dependency-verification=strict testDebugUnitTest
 
 coverage:
 	$(GRADLEW) koverXmlReportDebug koverVerifyDebug
