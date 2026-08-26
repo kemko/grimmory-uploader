@@ -2,15 +2,32 @@
 <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
     <suppress>
         <notes>Dependency-Check maps the legacy OpenID CPE to AppAuth; AppAuth does not contain the affected OpenID server implementation.</notes>
+        <packageUrl regex="true">^pkg:maven/net\.openid/appauth@.*$</packageUrl>
         <cve>CVE-2007-1651</cve>
     </suppress>
     <suppress>
         <notes>Dependency-Check maps the legacy OpenID CPE to AppAuth; AppAuth does not contain the affected OpenID server implementation.</notes>
+        <packageUrl regex="true">^pkg:maven/net\.openid/appauth@.*$</packageUrl>
         <cve>CVE-2007-1652</cve>
     </suppress>
     <suppress>
         <notes>Dependency-Check maps the AGP analytics protobuf library to the Android SDK; it does not contain the vulnerable 2008 BMP parser.</notes>
         <packageUrl regex="true">^pkg:maven/com\.android\.tools\.analytics-library/protos@.*$</packageUrl>
         <cve>CVE-2008-0986</cve>
+    </suppress>
+    <suppress>
+        <notes>AndroidX Browser is a support library, not the legacy Android Browser application affected by this CVE.</notes>
+        <packageUrl regex="true">^pkg:maven/androidx\.browser/browser@.*$</packageUrl>
+        <cve>CVE-2008-7298</cve>
+    </suppress>
+    <suppress>
+        <notes>This CVE affects Kotlin Gradle build-cache metadata, not Kotlin runtime artifacts shipped in the APK.</notes>
+        <packageUrl regex="true">^pkg:maven/org\.jetbrains\.kotlin/(kotlin-stdlib|kotlin-parcelize-runtime|kotlin-android-extensions-runtime)@.*$</packageUrl>
+        <cve>CVE-2026-53914</cve>
+    </suppress>
+    <suppress>
+        <notes>These locked runtime artifacts are newer than Kotlin 1.4.21, where CVE-2020-29582 was fixed.</notes>
+        <packageUrl regex="true">^pkg:maven/org\.jetbrains\.kotlin/(kotlin-parcelize-runtime|kotlin-android-extensions-runtime)@1\.9\.22$</packageUrl>
+        <cve>CVE-2020-29582</cve>
     </suppress>
 </suppressions>

@@ -22,13 +22,7 @@ jobs:
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Run CI gate
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: |
-          if [[ -z "$NVD_API_KEY" ]]; then
-            unset NVD_API_KEY
-          fi
-          make ci GRADLEW=gradle DEPENDENCY_CHECK_UPDATE=true
+        run: make ci GRADLEW=gradle DEPENDENCY_CHECK_UPDATE=true
       - name: Upload reports and debug APK
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

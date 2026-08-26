@@ -36,4 +36,13 @@ class VersioningTest {
         assertTrue(Regex("""release\(37\)\s*\{\s*minorApiLevel = 1""").containsMatchIn(buildScript))
         assertTrue(buildScript.contains("targetSdk = 37"))
     }
+
+    @Test
+    fun localMakeBuildDiscoversConventionalAndroidSdk() {
+        val makefile = File("../Makefile").readText()
+
+        assertTrue(makefile.contains("ifeq ($(filter true 1,$(strip $(CI))),)"))
+        assertTrue(makefile.contains("$(HOME)/Library/Android/sdk $(HOME)/Android/Sdk"))
+        assertTrue(makefile.contains("export ANDROID_HOME := $(LOCAL_ANDROID_SDK)"))
+    }
 }

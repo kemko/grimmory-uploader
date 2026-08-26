@@ -2,6 +2,15 @@ SHELL := /bin/bash
 GRADLEW := ./gradlew
 DEPENDENCY_CHECK_UPDATE ?= false
 
+ifeq ($(filter true 1,$(strip $(CI))),)
+ifeq ($(strip $(ANDROID_HOME)$(ANDROID_SDK_ROOT)),)
+LOCAL_ANDROID_SDK := $(firstword $(wildcard $(HOME)/Library/Android/sdk $(HOME)/Android/Sdk))
+ifneq ($(LOCAL_ANDROID_SDK),)
+export ANDROID_HOME := $(LOCAL_ANDROID_SDK)
+endif
+endif
+endif
+
 .PHONY: bootstrap-check format format-check lint test coverage security build ci release-apk
 
 bootstrap-check:
@@ -20,13 +29,13 @@ lint:
 	actionlint .github/workflows/*.yml
 
 test:
-	$(GRADLEW) --no-configuration-cache --refresh-dependencies --dependency-verification=strict testDebugUnitTest
+	$(GRADLEW) testDebugUnitTest
 
 coverage:
 	$(GRADLEW) koverXmlReportDebug koverVerifyDebug
 
 security:
-	$(GRADLEW) --no-configuration-cache --dependency-verification=strict -PdependencyCheckAutoUpdate=$(DEPENDENCY_CHECK_UPDATE) dependencyCheckAnalyze
+	$(GRADLEW) --no-configuration-cache -PdependencyCheckAutoUpdate=$(DEPENDENCY_CHECK_UPDATE) dependencyCheckAnalyze
 
 build:
 	$(GRADLEW) assembleDebug

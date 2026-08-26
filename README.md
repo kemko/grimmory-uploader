@@ -14,6 +14,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 The project uses one `app` module, Kotlin, Jetpack Compose, `minSdk 35`, `compileSdk 37.1`, and `targetSdk 37`. Run the complete local gate with `make ci`.
 
 Development on macOS requires Xcode Command Line Tools, Homebrew, JDK 26, Android command-line tools with platform 37.1/build-tools 37, and `actionlint`.
+Outside CI, Make automatically uses an SDK installed at `~/Library/Android/sdk` or `~/Android/Sdk` when neither `ANDROID_HOME` nor `ANDROID_SDK_ROOT` is set.
 
 Available Make targets are:
 
@@ -22,12 +23,14 @@ Available Make targets are:
 - `lint`: run Android Lint and actionlint.
 - `test`: run debug unit tests.
 - `coverage`: generate and verify Kover coverage.
-- `security`: run strict Gradle dependency verification and OWASP Dependency-Check.
+- `security`: scan release runtime dependencies with OWASP Dependency-Check.
 - `build`: assemble the debug APK.
 - `ci`: run the complete verification gate used by CI.
 - `release-apk`: assemble the release APK.
 
-Dependency-Check feed updates are disabled by default for repeatable local runs. Set `NVD_API_KEY` and use `make security DEPENDENCY_CHECK_UPDATE=true` to refresh vulnerability data; this requires network access. Before `make release-apk`, set `ANDROID_SIGNING_STORE_FILE`, `ANDROID_SIGNING_STORE_PASSWORD`, `ANDROID_SIGNING_KEY_ALIAS`, and `ANDROID_SIGNING_KEY_PASSWORD`.
+Dependency-Check feed updates are disabled by default for repeatable local runs. Use `make security DEPENDENCY_CHECK_UPDATE=true` to refresh vulnerability data; this requires network access. The security gate reports all findings and fails only for CVSS 9.0+ issues in release runtime dependencies. False-positive suppressions must identify the affected artifact and reason; a zero-finding report is not a dependency-upgrade goal. Use only stable dependency releases unless a pre-release is explicitly required for application functionality.
+
+Before `make release-apk`, set `ANDROID_SIGNING_STORE_FILE`, `ANDROID_SIGNING_STORE_PASSWORD`, `ANDROID_SIGNING_KEY_ALIAS`, and `ANDROID_SIGNING_KEY_PASSWORD`.
 
 ## First run and authentication
 
@@ -81,6 +84,6 @@ Settings control the normalized server URL, authentication mode (`AUTO`, `LOCAL`
 
 ## CI and releases
 
-CI runs on pull requests and pushes to `master` with JDK 26 and Android SDK 37.1. It executes `make ci`, refreshes the Dependency-Check database, and stores reports and the debug APK as workflow artifacts. Configure the `NVD_API_KEY` secret for feed updates. Use short Conventional Commits such as `feat: add upload retry` or `fix: reject unsafe ZIP path`; Release Please uses these commits to propose releases and updates `version.properties`. The version is stable SemVer, and Android `versionCode` is derived deterministically from it.
+CI runs on pull requests and pushes to `master` with JDK 26 and Android SDK 37.1. It executes `make ci`, refreshes the Dependency-Check database, and stores reports and the debug APK as workflow artifacts. Use short Conventional Commits such as `feat: add upload retry` or `fix: reject unsafe ZIP path`; Release Please uses these commits to propose releases and updates `version.properties`. The version is stable SemVer, and Android `versionCode` is derived deterministically from it.
 
 Release Please runs on pushes to `master`. When it creates a GitHub Release, the same workflow builds and uploads a signed APK and its SHA-256 file. Configure these GitHub Actions secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_SIGNING_KEY_ALIAS`, `ANDROID_SIGNING_STORE_PASSWORD`, and `ANDROID_SIGNING_KEY_PASSWORD`. The workflow writes the decoded keystore only to runner temporary storage and removes it in an `always()` step; signing values are not printed.

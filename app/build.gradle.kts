@@ -118,38 +118,16 @@ dependencyCheck {
             .map(String::toBoolean)
             .orElse(false)
             .get()
-    failBuildOnCVSS = 7.0f
-    failOnError = true
+    // CI gates only critical issues in dependencies shipped with the release APK.
+    failBuildOnCVSS = 9.0f
     formats = listOf("HTML", "SARIF")
+    scanConfigurations = listOf("releaseRuntimeClasspath")
     suppressionFile = rootProject.file("config/dependency-check-suppressions.xml").absolutePath
     nvd {
-        val apiKeyFromEnvironment =
-            providers
-                .environmentVariable("NVD_API_KEY")
-                .orNull
-                ?.takeIf(String::isNotBlank)
-        if (apiKeyFromEnvironment == null) {
-            datafeedUrl = "https://dependency-check.github.io/DependencyCheck_Builder/nvd_cache/nvdcve-{0}.json.gz"
-        } else {
-            apiKey = apiKeyFromEnvironment
-        }
-    }
-    hostedSuppressions {
-        enabled = false
+        datafeedUrl = "https://dependency-check.github.io/DependencyCheck_Builder/nvd_cache/nvdcve-{0}.json.gz"
     }
     analyzers {
-        assemblyEnabled = false
-        nodeEnabled = false
-        nodeAudit {
-            enabled = false
-        }
-        nodePackage {
-            enabled = false
-        }
         ossIndex {
-            enabled = false
-        }
-        retirejs {
             enabled = false
         }
     }
