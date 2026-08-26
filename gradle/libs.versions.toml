@@ -19,7 +19,7 @@ testCore = "1.7.0"
 kover = "0.9.8"
 ktlint = "14.2.0"
 dependencyCheck = "13.0.0"
-ksp = "2.3.10"
+ksp = "2.3.11"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
