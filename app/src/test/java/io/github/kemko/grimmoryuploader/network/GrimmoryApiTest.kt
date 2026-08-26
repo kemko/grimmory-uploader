@@ -21,6 +21,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 
 class GrimmoryApiTest {
     @Test
@@ -275,15 +276,19 @@ class GrimmoryApiTest {
     @Test
     fun preservesProviderSourceForDiscoveryTransportAndDecodeFailures() =
         runBlocking {
-            val unreachable = MockWebServer()
-            unreachable.start()
-            val unreachableIssuer = unreachable.url("/issuer").toString()
-            unreachable.shutdown()
             val malformed = MockWebServer()
             malformed.enqueue(MockResponse().setBody("{"))
             malformed.start()
             try {
-                val api =
+                val transportApi =
+                    GrimmoryApi(
+                        OkHttpClient
+                            .Builder()
+                            .addInterceptor { throw IOException("Provider unavailable") }
+                            .build(),
+                        serverUrl = { ServerUrl.parse("https://grimmory.example") },
+                    )
+                val decodeApi =
                     GrimmoryApi(
                         OkHttpClient(),
                         serverUrl = { ServerUrl.parse("https://grimmory.example") },
@@ -291,11 +296,11 @@ class GrimmoryApiTest {
 
                 val transport =
                     assertThrows(ApiException::class.java) {
-                        runBlocking { api.oidcDiscovery(unreachableIssuer) }
+                        runBlocking { transportApi.oidcDiscovery("https://issuer.example") }
                     }
                 val decode =
                     assertThrows(ApiException::class.java) {
-                        runBlocking { api.oidcDiscovery(malformed.url("/issuer").toString()) }
+                        runBlocking { decodeApi.oidcDiscovery(malformed.url("/issuer").toString()) }
                     }
 
                 assertEquals(ApiErrorSource.OIDC_PROVIDER, transport.source)

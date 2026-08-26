@@ -26,11 +26,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.ExternalResource
 import org.junit.rules.RuleChain
 import org.junit.rules.TestRule
-import org.junit.runner.Description
 import org.junit.runner.RunWith
-import org.junit.runners.model.Statement
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowContentResolver
@@ -43,22 +42,12 @@ import javax.crypto.spec.SecretKeySpec
 @Config(sdk = [35])
 class AppNavHostTest {
     private val databaseCleanup =
-        object : TestRule {
-            override fun apply(
-                base: Statement,
-                description: Description,
-            ): Statement =
-                object : Statement() {
-                    override fun evaluate() {
-                        try {
-                            base.evaluate()
-                        } finally {
-                            if (::container.isInitialized) {
-                                container.database.close()
-                            }
-                        }
-                    }
+        object : ExternalResource() {
+            override fun after() {
+                if (::container.isInitialized) {
+                    container.database.close()
                 }
+            }
         }
 
     private val compose = createComposeRule()

@@ -7,6 +7,7 @@ import io.github.kemko.grimmoryuploader.data.auth.AuthRepository
 import io.github.kemko.grimmoryuploader.data.auth.OidcCallbackException
 import io.github.kemko.grimmoryuploader.data.auth.OidcCallbackFailure
 import io.github.kemko.grimmoryuploader.data.auth.OidcCoordinator
+import io.github.kemko.grimmoryuploader.data.auth.OidcPendingRequest
 import io.github.kemko.grimmoryuploader.data.auth.OidcPendingStore
 import io.github.kemko.grimmoryuploader.data.auth.Pkce
 import io.github.kemko.grimmoryuploader.data.auth.TokenStore
@@ -29,6 +30,7 @@ import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -248,6 +250,105 @@ class OidcCoordinatorTest {
         }
 
     @Test
+    fun appAuthSuccessFallsBackToRedirectState() =
+        runBlocking {
+            val server = MockWebServer()
+            server.enqueue(MockResponse().setBody("""{"accessToken":"access","refreshToken":"refresh","expires":3600}"""))
+            server.start()
+            try {
+                val base = ServerUrl.parse(server.url("/").toString())
+                val store = TestTokenStore()
+                store.writePendingOidc(pendingRequest(base))
+                val api = GrimmoryApi(OkHttpClient(), serverUrl = { base })
+                val coordinator = coordinator(api, store, base)
+                val request =
+                    AuthorizationRequest
+                        .Builder(
+                            AuthorizationServiceConfiguration(
+                                Uri.parse("https://issuer.example"),
+                                Uri.parse("https://issuer.example/token"),
+                            ),
+                            "client",
+                            ResponseTypeValues.CODE,
+                            Uri.parse("io.github.kemko.grimmoryuploader:/oauth2redirect"),
+                        ).build()
+                val response = AuthorizationResponse.Builder(request).setAuthorizationCode("appauth-code").build()
+                val callback = Uri.parse("io.github.kemko.grimmoryuploader:/oauth2redirect?state=expected")
+
+                coordinator.handleAuthorizationResult(response.toIntent().setData(callback))
+
+                val exchange = server.takeRequest(5, TimeUnit.SECONDS)
+                assertNotNull(exchange)
+                assertEquals("expected", exchange!!.requestUrl?.queryParameter("state"))
+                assertEquals("appauth-code", exchange.requestUrl?.queryParameter("code"))
+                assertNotNull(store.read())
+                assertNull(store.readPendingOidc())
+            } finally {
+                server.shutdown()
+            }
+        }
+
+    @Test
+    fun malformedAppAuthExtrasClearPendingRequest() =
+        runBlocking {
+            val base = ServerUrl.parse("https://grimmory.example")
+            val store = TestTokenStore()
+            store.writePendingOidc(pendingRequest(base))
+            val coordinator = coordinator(noNetworkApi(base), store, base)
+            val intent = Intent().putExtra(AuthorizationResponse.EXTRA_RESPONSE, "{")
+
+            val exception =
+                assertThrows(OidcCallbackException::class.java) {
+                    runBlocking { coordinator.handleAuthorizationResult(intent) }
+                }
+
+            assertEquals(OidcCallbackFailure.APP_AUTH_ERROR, exception.failure)
+            assertTrue(exception.cause is IllegalArgumentException)
+            assertNull(store.readPendingOidc())
+        }
+
+    @Test
+    fun dataOnlyOAuthErrorIsSanitizedAndClearsPendingRequest() =
+        runBlocking {
+            val base = ServerUrl.parse("https://grimmory.example")
+            val store = TestTokenStore()
+            store.writePendingOidc(pendingRequest(base))
+            val coordinator = coordinator(noNetworkApi(base), store, base)
+            val callback =
+                Uri.parse(
+                    "io.github.kemko.grimmoryuploader:/oauth2redirect?state=expected&" +
+                        "error=%20access_denied%20&error_description=User%0Adenied",
+                )
+
+            val exception =
+                assertThrows(OidcCallbackException::class.java) {
+                    runBlocking { coordinator.handleAuthorizationResult(Intent().setData(callback)) }
+                }
+
+            assertEquals(OidcCallbackFailure.PROVIDER_ERROR, exception.failure)
+            assertEquals("access_denied", exception.errorCode)
+            assertEquals("User denied", exception.errorDescription)
+            assertNull(store.readPendingOidc())
+        }
+
+    @Test
+    fun emptyAuthorizationResultClearsPendingRequest() =
+        runBlocking {
+            val base = ServerUrl.parse("https://grimmory.example")
+            val store = TestTokenStore()
+            store.writePendingOidc(pendingRequest(base))
+            val coordinator = coordinator(noNetworkApi(base), store, base)
+
+            val exception =
+                assertThrows(OidcCallbackException::class.java) {
+                    runBlocking { coordinator.handleAuthorizationResult(Intent()) }
+                }
+
+            assertEquals(OidcCallbackFailure.APP_AUTH_ERROR, exception.failure)
+            assertNull(store.readPendingOidc())
+        }
+
+    @Test
     fun providerOAuthErrorUsesStateFromRedirectUri() =
         runBlocking {
             val server = MockWebServer()
@@ -369,11 +470,14 @@ class OidcCoordinatorTest {
                         authorizationIntentFactory = { Intent("test.oidc") },
                     )
                 coordinator.start()
-                repeat(3) { server.takeRequest() }
+                repeat(3) { assertNotNull(server.takeRequest(5, TimeUnit.SECONDS)) }
 
                 val callback = launch(Dispatchers.IO) { coordinator.handleCallback("expected", null, "code") }
-                server.takeRequest()
-                callback.cancelAndJoin()
+                try {
+                    assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+                } finally {
+                    callback.cancelAndJoin()
+                }
 
                 assertNull(store.readPendingOidc())
             } finally {
@@ -503,6 +607,24 @@ class OidcCoordinatorTest {
         store,
         authorizationIntentFactory = { Intent("test.oidc") },
     )
+
+    private fun noNetworkApi(base: ServerUrl) =
+        GrimmoryApi(
+            OkHttpClient
+                .Builder()
+                .addInterceptor { throw AssertionError("Unexpected network request") }
+                .build(),
+            serverUrl = { base },
+        )
+
+    private fun pendingRequest(base: ServerUrl) =
+        OidcPendingRequest(
+            state = "expected",
+            codeVerifier = "verifier",
+            nonce = "nonce",
+            redirectUri = "io.github.kemko.grimmoryuploader:/oauth2redirect",
+            serverUrl = base.normalized,
+        )
 
     private class CancellationCheckingStore(
         private val delegate: TestTokenStore = TestTokenStore(),
