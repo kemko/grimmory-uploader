@@ -123,11 +123,16 @@ dependencyCheck {
     formats = listOf("HTML", "SARIF")
     suppressionFile = rootProject.file("config/dependency-check-suppressions.xml").absolutePath
     nvd {
-        providers
-            .environmentVariable("NVD_API_KEY")
-            .orNull
-            ?.takeIf(String::isNotBlank)
-            ?.let { apiKey = it }
+        val apiKeyFromEnvironment =
+            providers
+                .environmentVariable("NVD_API_KEY")
+                .orNull
+                ?.takeIf(String::isNotBlank)
+        if (apiKeyFromEnvironment == null) {
+            datafeedUrl = "https://dependency-check.github.io/DependencyCheck_Builder/nvd_cache/nvdcve-{0}.json.gz"
+        } else {
+            apiKey = apiKeyFromEnvironment
+        }
     }
     hostedSuppressions {
         enabled = false
