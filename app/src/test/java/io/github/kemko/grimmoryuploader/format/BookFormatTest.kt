@@ -1,24 +1,25 @@
 package io.github.kemko.grimmoryuploader.format
 
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
+import org.junit.Test
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertThrows
-import org.junit.Assert.assertTrue
-import org.junit.Test
 
 class BookFormatTest {
     private val detector = BookFormatDetector()
     private val transformer = BookTransformer()
-    private val fb2 = "<?xml version=\"1.0\"?><FictionBook xmlns=\"http://www.grimmory.test/fb2\"><description/><body><p>book</p></body></FictionBook>"
+    private val fb2 =
+        "<?xml version=\"1.0\"?><FictionBook xmlns=\"http://www.grimmory.test/fb2\">" +
+            "<description/><body><p>book</p></body></FictionBook>"
 
     @Test
     fun detectsContentNotExtension() {
@@ -35,7 +36,8 @@ class BookFormatTest {
     @Test
     fun detectsAndRejectsArchives() {
         val dir = Files.createTempDirectory("archives").toFile()
-        val epub = zip(dir, "book.any", listOf("mimetype" to "application/epub+zip", "OEBPS/content.xhtml" to "<html/>"), storedFirst = true)
+        val epub =
+            zip(dir, "book.any", listOf("mimetype" to "application/epub+zip", "OEBPS/content.xhtml" to "<html/>"), storedFirst = true)
         val fb2zip = zip(dir, "book.zip", listOf("nested/book.fb2" to fb2))
         val ordinary = zip(dir, "ordinary.zip", listOf("readme.txt" to "hello"))
         assertEquals(BookFormat.EPUB, detector.detect(epub))
@@ -46,12 +48,13 @@ class BookFormatTest {
 
     @Test
     fun detectsPdfFb2AndEpubFromStreams() {
-        val epub = zip(
-            Files.createTempDirectory("stream-epub").toFile(),
-            "book.epub",
-            listOf("mimetype" to "application/epub+zip"),
-            storedFirst = true,
-        ).readBytes()
+        val epub =
+            zip(
+                Files.createTempDirectory("stream-epub").toFile(),
+                "book.epub",
+                listOf("mimetype" to "application/epub+zip"),
+                storedFirst = true,
+            ).readBytes()
 
         assertEquals(BookFormat.PDF, detector.detect(ByteArrayInputStream("%PDF-1.7".toByteArray())))
         assertEquals(BookFormat.FB2, detector.detect(ByteArrayInputStream(fb2.toByteArray())))
@@ -63,9 +66,10 @@ class BookFormatTest {
         val dir = Files.createTempDirectory("invalid").toFile()
         val duplicate = zip(dir, "duplicate.zip", listOf("a.fb2" to fb2, "b.fb2" to fb2))
         assertThrows(IllegalArgumentException::class.java) { detector.detect(duplicate) }
-        val evil = File(dir, "evil.xml").apply {
-            writeText("<!DOCTYPE FictionBook [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><FictionBook>&x;</FictionBook>")
-        }
+        val evil =
+            File(dir, "evil.xml").apply {
+                writeText("<!DOCTYPE FictionBook [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><FictionBook>&x;</FictionBook>")
+            }
         assertThrows(Exception::class.java) { detector.detect(evil) }
         dir.deleteRecursively()
     }
@@ -73,13 +77,14 @@ class BookFormatTest {
     @Test
     fun rejectsCorruptNonMimetypeEpubEntry() {
         val dir = Files.createTempDirectory("corrupt-epub").toFile()
-        val epub = zip(
-            dir,
-            "book.epub",
-            listOf("mimetype" to "application/epub+zip", "OEBPS/content.xhtml" to "unique-payload"),
-            storedFirst = true,
-            storedEntries = setOf("OEBPS/content.xhtml"),
-        )
+        val epub =
+            zip(
+                dir,
+                "book.epub",
+                listOf("mimetype" to "application/epub+zip", "OEBPS/content.xhtml" to "unique-payload"),
+                storedFirst = true,
+                storedEntries = setOf("OEBPS/content.xhtml"),
+            )
         val bytes = epub.readBytes()
         val payloadIndex = String(bytes, StandardCharsets.ISO_8859_1).indexOf("unique-payload")
         require(payloadIndex >= 0)
@@ -102,14 +107,19 @@ class BookFormatTest {
         ).forEach { name ->
             assertThrows(IllegalArgumentException::class.java) { ZipGuards.validateName(name) }
         }
-        val oversized = ZipEntry("book.fb2").apply {
-            size = ZipGuards.MAX_ENTRY_SIZE + 1
-            compressedSize = size
-        }
+        val oversized =
+            ZipEntry("book.fb2").apply {
+                size = ZipGuards.MAX_ENTRY_SIZE + 1
+                compressedSize = size
+            }
         assertThrows(IllegalArgumentException::class.java) {
             ZipGuards.validateEntry(oversized, oversized.compressedSize, oversized.size)
         }
-        val excessiveTotal = ZipEntry("book.fb2").apply { size = 1; compressedSize = 1 }
+        val excessiveTotal =
+            ZipEntry("book.fb2").apply {
+                size = 1
+                compressedSize = 1
+            }
         assertThrows(IllegalArgumentException::class.java) {
             ZipGuards.validateEntry(excessiveTotal, 1, ZipGuards.MAX_TOTAL_UNCOMPRESSED + 1)
         }
@@ -130,9 +140,10 @@ class BookFormatTest {
         val archive = zip(dir, "book.zip", listOf("book.fb2" to fb2))
         val bytes = archive.readBytes()
         val signature = byteArrayOf(0x50, 0x4b, 0x05, 0x06)
-        val endOffset = (bytes.size - signature.size downTo 0).first { offset ->
-            signature.indices.all { bytes[offset + it] == signature[it] }
-        }
+        val endOffset =
+            (bytes.size - signature.size downTo 0).first { offset ->
+                signature.indices.all { bytes[offset + it] == signature[it] }
+            }
         bytes[endOffset + 8] = 0xd1.toByte()
         bytes[endOffset + 9] = 0x07.toByte()
         bytes[endOffset + 10] = 0xd1.toByte()
@@ -141,9 +152,10 @@ class BookFormatTest {
 
         val detectionError = assertThrows(IllegalArgumentException::class.java) { detector.detect(archive) }
         assertEquals("Too many ZIP entries", detectionError.message)
-        val transformError = assertThrows(IllegalArgumentException::class.java) {
-            transformer.transform(archive, BookFormat.FB2_ZIP, ByteArrayOutputStream())
-        }
+        val transformError =
+            assertThrows(IllegalArgumentException::class.java) {
+                transformer.transform(archive, BookFormat.FB2_ZIP, ByteArrayOutputStream())
+            }
         assertEquals("Too many ZIP entries", transformError.message)
         dir.deleteRecursively()
     }
@@ -162,7 +174,13 @@ class BookFormatTest {
     @Test
     fun epubMimetypeIsStoredFirstAndOtherEntriesAreCompressed() {
         val dir = Files.createTempDirectory("epub").toFile()
-        val source = zip(dir, "book.epub", listOf("mimetype" to "application/epub+zip", "OEBPS/content.xhtml" to "x".repeat(10_000)), storedFirst = true)
+        val source =
+            zip(
+                dir,
+                "book.epub",
+                listOf("mimetype" to "application/epub+zip", "OEBPS/content.xhtml" to "x".repeat(10_000)),
+                storedFirst = true,
+            )
         val output = ByteArrayOutputStream()
         transformer.transform(source, BookFormat.EPUB, output)
         val result = File(dir, "result.epub").apply { writeBytes(output.toByteArray()) }
@@ -206,7 +224,10 @@ class BookFormatTest {
                     val bytes = value.toByteArray(StandardCharsets.UTF_8)
                     entry.method = ZipEntry.STORED
                     entry.size = bytes.size.toLong()
-                    val crc = java.util.zip.CRC32().apply { update(bytes) }
+                    val crc =
+                        java.util.zip
+                            .CRC32()
+                            .apply { update(bytes) }
                     entry.crc = crc.value
                 }
                 zip.putNextEntry(entry)

@@ -9,7 +9,8 @@ class AppSmokeTest {
         assertNotNull(GrimmoryUploaderApp::class.java)
         assertNotNull(MainActivity::class.java)
         assertNotNull(
-            Class.forName("io.github.kemko.grimmoryuploader.MainActivityKt")
+            Class
+                .forName("io.github.kemko.grimmoryuploader.MainActivityKt")
                 .declaredMethods
                 .singleOrNull { it.name == "WelcomeScreen" },
         )

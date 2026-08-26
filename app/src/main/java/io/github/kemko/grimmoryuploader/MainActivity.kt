@@ -1,13 +1,12 @@
 package io.github.kemko.grimmoryuploader
 
-import android.os.Bundle
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
-import androidx.core.content.ContextCompat
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -16,34 +15,37 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
-import io.github.kemko.grimmoryuploader.ui.AppNavHost
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import io.github.kemko.grimmoryuploader.ui.AppNavHost
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private var launchIntent by mutableStateOf<Intent?>(null)
     private var notificationPermissionDenied by mutableStateOf(false)
     private var oidcError by mutableStateOf<String?>(null)
-    private val notificationPermission = registerForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted -> notificationPermissionDenied = !granted }
-    private val oidcAuthorization = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        lifecycleScope.launch {
-            runCatching {
-                val app = application as GrimmoryUploaderApp
-                app.container.oidc.handleAuthorizationResult(result.data)
-                app.container.transferScheduler.resumeAwaitingAuth()
-            }.fold(
-                onSuccess = {
-                    oidcError = null
-                    recreate()
-                },
-                onFailure = { oidcError = it.message ?: "OIDC sign-in failed" },
-            )
+    private val notificationPermission =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+        ) { granted -> notificationPermissionDenied = !granted }
+    private val oidcAuthorization =
+        registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult(),
+        ) { result ->
+            lifecycleScope.launch {
+                runCatching {
+                    val app = application as GrimmoryUploaderApp
+                    app.container.oidc.handleAuthorizationResult(result.data)
+                    app.container.transferScheduler.resumeAwaitingAuth()
+                }.fold(
+                    onSuccess = {
+                        oidcError = null
+                        recreate()
+                    },
+                    onFailure = { oidcError = it.message ?: "OIDC sign-in failed" },
+                )
+            }
         }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,7 +95,9 @@ class MainActivity : ComponentActivity() {
     private fun requestNotificationPermission() {
         if (android.os.Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        ) return
+        ) {
+            return
+        }
         val preferences = getSharedPreferences(PERMISSION_PREFERENCES, MODE_PRIVATE)
         if (preferences.getBoolean(KEY_NOTIFICATION_REQUESTED, false)) {
             notificationPermissionDenied = true

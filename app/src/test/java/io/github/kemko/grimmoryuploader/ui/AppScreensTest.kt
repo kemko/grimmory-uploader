@@ -29,22 +29,22 @@ import io.github.kemko.grimmoryuploader.upload.TransferProgress
 import io.github.kemko.grimmoryuploader.upload.TransferStage
 import io.github.kemko.grimmoryuploader.upload.UploadSettingsSnapshot
 import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
-import java.io.File
-import java.security.SecureRandom
-import javax.crypto.spec.SecretKeySpec
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
-import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.io.File
+import java.security.SecureRandom
+import javax.crypto.spec.SecretKeySpec
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -93,10 +93,11 @@ class AppScreensTest {
     fun homeRendersEveryStateProgressAndAvailableActions() {
         runBlocking {
             UploadJobState.entries.forEach { target ->
-                val job = container.upload.enqueue(
-                    IncomingInput.Url("https://books.test/${target.name}.fb2", "${target.name}.fb2"),
-                    UploadSettingsSnapshot("https://one.example"),
-                )
+                val job =
+                    container.upload.enqueue(
+                        IncomingInput.Url("https://books.test/${target.name}.fb2", "${target.name}.fb2"),
+                        UploadSettingsSnapshot("https://one.example"),
+                    )
                 when (target) {
                     UploadJobState.STAGED -> Unit
                     UploadJobState.AWAITING_AUTH,
@@ -238,14 +239,16 @@ class AppScreensTest {
         server.start()
         try {
             val serverUrl = server.url("/").toString().trimEnd('/')
-            val job = runBlocking {
-                container.settings.applyConfiguration(serverUrl, 1, 1, true, AuthMode.LOCAL, true)
-                container.tokenStore.write(TokenPair("access", "refresh", Long.MAX_VALUE, serverUrl))
-                container.upload.enqueue(
-                    IncomingInput.Url("https://books.test/resume.fb2", "resume.fb2"),
-                    UploadSettingsSnapshot(serverUrl, serverCleartextConfirmed = true),
-                ).also { container.upload.transition(it.id, UploadJobState.AWAITING_AUTH) }
-            }
+            val job =
+                runBlocking {
+                    container.settings.applyConfiguration(serverUrl, 1, 1, true, AuthMode.LOCAL, true)
+                    container.tokenStore.write(TokenPair("access", "refresh", Long.MAX_VALUE, serverUrl))
+                    container.upload
+                        .enqueue(
+                            IncomingInput.Url("https://books.test/resume.fb2", "resume.fb2"),
+                            UploadSettingsSnapshot(serverUrl, serverCleartextConfirmed = true),
+                        ).also { container.upload.transition(it.id, UploadJobState.AWAITING_AUTH) }
+                }
             server.enqueue(MockResponse().setBody("""{"id":1,"username":"reader"}"""))
 
             compose.setContent { MaterialTheme { AppNavHost(container) } }
@@ -276,15 +279,22 @@ class AppScreensTest {
                 MaterialTheme {
                     AppNavHost(
                         container,
-                        launchIntent = Intent(Intent.ACTION_VIEW)
-                            .setDataAndType(Uri.fromFile(source), "application/octet-stream"),
+                        launchIntent =
+                            Intent(Intent.ACTION_VIEW)
+                                .setDataAndType(Uri.fromFile(source), "application/octet-stream"),
                     )
                 }
             }
             compose.waitUntil(5_000) {
                 compose.onAllNodesWithText("unsupported.djvu").fetchSemanticsNodes().isNotEmpty()
             }
-            val job = runBlocking { container.upload.observeAll().first().single() }
+            val job =
+                runBlocking {
+                    container.upload
+                        .observeAll()
+                        .first()
+                        .single()
+                }
             runBlocking {
                 container.upload.updateProgress(
                     job.id,

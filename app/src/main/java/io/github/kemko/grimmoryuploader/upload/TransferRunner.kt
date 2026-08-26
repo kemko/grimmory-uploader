@@ -13,11 +13,32 @@ interface TransferPipeline {
 }
 
 interface TransferEvents {
-    fun progress(jobId: Long, name: String, progress: TransferProgress)
-    fun success(jobId: Long, name: String)
-    fun authRequired(jobId: Long, name: String)
-    fun cleartextRequired(jobId: Long, name: String)
-    fun failure(jobId: Long, name: String, reason: String)
+    fun progress(
+        jobId: Long,
+        name: String,
+        progress: TransferProgress,
+    )
+
+    fun success(
+        jobId: Long,
+        name: String,
+    )
+
+    fun authRequired(
+        jobId: Long,
+        name: String,
+    )
+
+    fun cleartextRequired(
+        jobId: Long,
+        name: String,
+    )
+
+    fun failure(
+        jobId: Long,
+        name: String,
+        reason: String,
+    )
 }
 
 class TransferRunner(
@@ -26,7 +47,10 @@ class TransferRunner(
     private val events: TransferEvents,
     private val nowNanos: () -> Long = System::nanoTime,
 ) {
-    suspend fun run(job: UploadJobEntity, cancelled: () -> Boolean): Boolean {
+    suspend fun run(
+        job: UploadJobEntity,
+        cancelled: () -> Boolean,
+    ): Boolean {
         if (!queue.transition(job.id, UploadJobState.RUNNING)) return false
         val reporter = ProgressReporter(job.id, job.displayName)
         val result = pipeline.execute(job, cancelled, reporter::update)
@@ -82,7 +106,8 @@ class TransferRunner(
             return progress.stage != previous.stage ||
                 progress.total != previous.total ||
                 progress.current < previous.current ||
-                progress.total > 0 && progress.current >= progress.total ||
+                progress.total > 0 &&
+                progress.current >= progress.total ||
                 progress.current - previous.current >= MIN_PROGRESS_BYTES ||
                 nowNanos() - publishedAt >= MIN_PROGRESS_INTERVAL_NANOS
         }

@@ -52,10 +52,11 @@ object ZipGuards {
                 require(directory.unsignedInt(cursor) == CENTRAL_HEADER_SIGNATURE) {
                     "ZIP central directory is invalid"
                 }
-                val recordSize = CENTRAL_HEADER_BYTES +
-                    directory.unsignedShort(cursor + 28) +
-                    directory.unsignedShort(cursor + 30) +
-                    directory.unsignedShort(cursor + 32)
+                val recordSize =
+                    CENTRAL_HEADER_BYTES +
+                        directory.unsignedShort(cursor + 28) +
+                        directory.unsignedShort(cursor + 30) +
+                        directory.unsignedShort(cursor + 32)
                 require(recordSize <= directory.size - cursor) { "ZIP central directory is invalid" }
                 cursor += recordSize
             }
@@ -69,14 +70,19 @@ object ZipGuards {
         val parts = name.replace('\\', '/').split('/')
         val pathParts = if (name.endsWith('/') || name.endsWith('\\')) parts.dropLast(1) else parts
         require(
-            pathParts.isNotEmpty() && pathParts.size <= MAX_PATH_DEPTH &&
+            pathParts.isNotEmpty() &&
+                pathParts.size <= MAX_PATH_DEPTH &&
                 pathParts.none { it == "." || it == ".." || it.isEmpty() },
         ) {
             "Unsafe ZIP entry path"
         }
     }
 
-    fun validateEntry(entry: ZipEntry, compressedSize: Long, total: Long) {
+    fun validateEntry(
+        entry: ZipEntry,
+        compressedSize: Long,
+        total: Long,
+    ) {
         validateName(entry.name)
         require(entry.size <= MAX_ENTRY_SIZE || entry.size < 0) { "ZIP entry is too large" }
         if (entry.size >= 0 && compressedSize > 0) {
@@ -87,7 +93,12 @@ object ZipGuards {
         require(total <= MAX_TOTAL_UNCOMPRESSED) { "ZIP archive is too large" }
     }
 
-    fun validateActualEntry(entry: ZipEntry, compressedSize: Long, actualSize: Long, total: Long) {
+    fun validateActualEntry(
+        entry: ZipEntry,
+        compressedSize: Long,
+        actualSize: Long,
+        total: Long,
+    ) {
         validateName(entry.name)
         require(actualSize <= MAX_ENTRY_SIZE) { "ZIP entry is too large" }
         require(entry.size < 0 || entry.size == actualSize) { "ZIP entry size is invalid" }
@@ -99,12 +110,16 @@ object ZipGuards {
         require(total <= MAX_TOTAL_UNCOMPRESSED) { "ZIP archive is too large" }
     }
 
-    fun maxReadableBytes(compressedSize: Long, totalBeforeEntry: Long): Long {
-        val ratioLimit = if (compressedSize > 0 && compressedSize <= Long.MAX_VALUE / MAX_COMPRESSION_RATIO) {
-            compressedSize * MAX_COMPRESSION_RATIO
-        } else {
-            Long.MAX_VALUE
-        }
+    fun maxReadableBytes(
+        compressedSize: Long,
+        totalBeforeEntry: Long,
+    ): Long {
+        val ratioLimit =
+            if (compressedSize > 0 && compressedSize <= Long.MAX_VALUE / MAX_COMPRESSION_RATIO) {
+                compressedSize * MAX_COMPRESSION_RATIO
+            } else {
+                Long.MAX_VALUE
+            }
         return minOf(MAX_ENTRY_SIZE, MAX_TOTAL_UNCOMPRESSED - totalBeforeEntry, ratioLimit)
             .coerceAtLeast(0)
     }
@@ -121,11 +136,9 @@ object ZipGuards {
         return -1
     }
 
-    private fun ByteArray.unsignedShort(offset: Int): Int =
-        (this[offset].toInt() and 0xff) or ((this[offset + 1].toInt() and 0xff) shl 8)
+    private fun ByteArray.unsignedShort(offset: Int): Int = (this[offset].toInt() and 0xff) or ((this[offset + 1].toInt() and 0xff) shl 8)
 
-    private fun ByteArray.unsignedInt(offset: Int): Long =
-        unsignedShort(offset).toLong() or (unsignedShort(offset + 2).toLong() shl 16)
+    private fun ByteArray.unsignedInt(offset: Int): Long = unsignedShort(offset).toLong() or (unsignedShort(offset + 2).toLong() shl 16)
 
     private const val MIN_END_RECORD_BYTES = 22
     private const val MAX_END_SEARCH_BYTES = MIN_END_RECORD_BYTES + 65_535L

@@ -6,12 +6,12 @@ import io.github.kemko.grimmoryuploader.GrimmoryUploaderApp
 import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
@@ -27,49 +27,74 @@ class TransferJobService : JobService() {
         val app = application as GrimmoryUploaderApp
         val container = app.container
         lateinit var transfer: RunningTransfer
-        val job = scope.launch(start = CoroutineStart.LAZY) {
-            var reschedule = false
-            try {
-                app.startupReconciliation.await()
-                val queued = container.database.jobs().find(id) ?: return@launch
-                val notifications = container.transferNotifications
-                val lifecycleNotificationId = TransferScheduler.lifecycleNotificationId(id)
-                fun showProgress(progress: TransferProgress) = setNotification(
-                    params,
-                    lifecycleNotificationId,
-                    notifications.progressNotification(id, queued.displayName, progress),
-                    JOB_END_NOTIFICATION_POLICY_REMOVE,
-                )
-                showProgress(TransferProgress(TransferStage.VALIDATION))
-                val events = object : TransferEvents {
-                    override fun progress(jobId: Long, name: String, progress: TransferProgress) = showProgress(progress)
-                    override fun success(jobId: Long, name: String) = notifications.success(jobId, name)
-                    override fun authRequired(jobId: Long, name: String) = notifications.authRequired(jobId, name)
-                    override fun cleartextRequired(jobId: Long, name: String) = notifications.cleartextRequired(jobId, name)
-                    override fun failure(jobId: Long, name: String, reason: String) =
-                        notifications.failure(jobId, name, reason)
+        val job =
+            scope.launch(start = CoroutineStart.LAZY) {
+                var reschedule = false
+                try {
+                    app.startupReconciliation.await()
+                    val queued = container.database.jobs().find(id) ?: return@launch
+                    val notifications = container.transferNotifications
+                    val lifecycleNotificationId = TransferScheduler.lifecycleNotificationId(id)
+
+                    fun showProgress(progress: TransferProgress) =
+                        setNotification(
+                            params,
+                            lifecycleNotificationId,
+                            notifications.progressNotification(id, queued.displayName, progress),
+                            JOB_END_NOTIFICATION_POLICY_REMOVE,
+                        )
+                    showProgress(TransferProgress(TransferStage.VALIDATION))
+                    val events =
+                        object : TransferEvents {
+                            override fun progress(
+                                jobId: Long,
+                                name: String,
+                                progress: TransferProgress,
+                            ) = showProgress(progress)
+
+                            override fun success(
+                                jobId: Long,
+                                name: String,
+                            ) = notifications.success(jobId, name)
+
+                            override fun authRequired(
+                                jobId: Long,
+                                name: String,
+                            ) = notifications.authRequired(jobId, name)
+
+                            override fun cleartextRequired(
+                                jobId: Long,
+                                name: String,
+                            ) = notifications.cleartextRequired(jobId, name)
+
+                            override fun failure(
+                                jobId: Long,
+                                name: String,
+                                reason: String,
+                            ) = notifications.failure(jobId, name, reason)
+                        }
+                    reschedule =
+                        TransferRunner(container.upload, container.pipeline, events).run(queued) {
+                            transfer.stopped.get() || !transfer.job.isActive
+                        }
+                } catch (_: CancellationException) {
+                    withContext(NonCancellable) {
+                        container.upload.transition(id, UploadJobState.QUEUED, "Transfer was interrupted")
+                    }
+                } catch (error: Throwable) {
+                    withContext(NonCancellable) {
+                        container.upload.transition(
+                            id,
+                            UploadJobState.QUEUED,
+                            error.message ?: "Transfer service failed",
+                        )
+                        reschedule = true
+                    }
+                } finally {
+                    running.remove(id, transfer)
+                    if (!transfer.stopped.get()) jobFinished(params, reschedule)
                 }
-                reschedule = TransferRunner(container.upload, container.pipeline, events).run(queued) {
-                    transfer.stopped.get() || !transfer.job.isActive
-                }
-            } catch (_: CancellationException) {
-                withContext(NonCancellable) {
-                    container.upload.transition(id, UploadJobState.QUEUED, "Transfer was interrupted")
-                }
-            } catch (error: Throwable) {
-                withContext(NonCancellable) {
-                    container.upload.transition(
-                        id,
-                        UploadJobState.QUEUED,
-                        error.message ?: "Transfer service failed",
-                    )
-                    reschedule = true
-                }
-            } finally {
-                running.remove(id, transfer)
-                if (!transfer.stopped.get()) jobFinished(params, reschedule)
             }
-        }
         transfer = RunningTransfer(job = job)
         if (running.putIfAbsent(id, transfer) != null) return false
         job.start()

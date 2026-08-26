@@ -9,4 +9,6 @@ enum class BookFormat {
     PDF,
 }
 
-class UnsupportedBookException(message: String) : IOException(message)
+class UnsupportedBookException(
+    message: String,
+) : IOException(message)

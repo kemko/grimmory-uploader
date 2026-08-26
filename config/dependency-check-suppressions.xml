@@ -8,4 +8,9 @@
         <notes>Dependency-Check maps the legacy OpenID CPE to AppAuth; AppAuth does not contain the affected OpenID server implementation.</notes>
         <cve>CVE-2007-1652</cve>
     </suppress>
+    <suppress>
+        <notes>Dependency-Check maps the AGP analytics protobuf library to the Android SDK; it does not contain the vulnerable 2008 BMP parser.</notes>
+        <packageUrl regex="true">^pkg:maven/com\.android\.tools\.analytics-library/protos@.*$</packageUrl>
+        <cve>CVE-2008-0986</cve>
+    </suppress>
 </suppressions>

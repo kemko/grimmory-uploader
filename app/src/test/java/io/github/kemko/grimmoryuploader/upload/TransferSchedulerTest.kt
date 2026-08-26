@@ -6,7 +6,6 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import io.github.kemko.grimmoryuploader.share.IncomingInput
 import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
-import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -15,6 +14,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.nio.file.Files
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -24,11 +24,12 @@ class TransferSchedulerTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val root = Files.createTempDirectory("scheduler").toFile()
         val cleared = mutableListOf<Long>()
-        val scheduler = TransferScheduler(
-            context,
-            UploadQueueRepository(FakeUploadJobDao(), StagingStore(root)),
-            cleared::add,
-        )
+        val scheduler =
+            TransferScheduler(
+                context,
+                UploadQueueRepository(FakeUploadJobDao(), StagingStore(root)),
+                cleared::add,
+            )
 
         val info = scheduler.jobInfo(42, estimatedUploadBytes = 100, estimatedDownloadBytes = 200)
         assertTrue(info.isUserInitiated)
@@ -54,64 +55,70 @@ class TransferSchedulerTest {
     }
 
     @Test
-    fun authResumeRollsBackFailuresAndContinuesWithLaterJobs() = runBlocking {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val root = Files.createTempDirectory("scheduler-auth").toFile()
-        val dao = FakeUploadJobDao()
-        val queue = UploadQueueRepository(dao, StagingStore(root))
-        val scheduler = TransferScheduler(context, queue)
-        val first = queue.enqueue(
-            IncomingInput.Url("https://books.test/first.fb2", "first.fb2"),
-            UploadSettingsSnapshot("https://one.example"),
-        )
-        val second = queue.enqueue(
-            IncomingInput.Url("https://books.test/second.fb2", "second.fb2"),
-            UploadSettingsSnapshot("https://one.example"),
-        )
-        queue.transition(first.id, UploadJobState.AWAITING_AUTH)
-        queue.transition(second.id, UploadJobState.AWAITING_AUTH)
-        val scheduled = mutableListOf<Long>()
+    fun authResumeRollsBackFailuresAndContinuesWithLaterJobs() =
+        runBlocking {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val root = Files.createTempDirectory("scheduler-auth").toFile()
+            val dao = FakeUploadJobDao()
+            val queue = UploadQueueRepository(dao, StagingStore(root))
+            val scheduler = TransferScheduler(context, queue)
+            val first =
+                queue.enqueue(
+                    IncomingInput.Url("https://books.test/first.fb2", "first.fb2"),
+                    UploadSettingsSnapshot("https://one.example"),
+                )
+            val second =
+                queue.enqueue(
+                    IncomingInput.Url("https://books.test/second.fb2", "second.fb2"),
+                    UploadSettingsSnapshot("https://one.example"),
+                )
+            queue.transition(first.id, UploadJobState.AWAITING_AUTH)
+            queue.transition(second.id, UploadJobState.AWAITING_AUTH)
+            val scheduled = mutableListOf<Long>()
 
-        scheduler.resumeAwaitingAuth { id ->
-            if (id == first.id) error("not visible")
-            scheduled += id
+            scheduler.resumeAwaitingAuth { id ->
+                if (id == first.id) error("not visible")
+                scheduled += id
+            }
+
+            assertEquals(UploadJobState.AWAITING_AUTH, queue.find(first.id)?.state)
+            assertEquals("not visible", queue.find(first.id)?.failureReason)
+            assertEquals(UploadJobState.QUEUED, queue.find(second.id)?.state)
+            assertEquals(listOf(second.id), scheduled)
+            root.deleteRecursively()
+            Unit
         }
-
-        assertEquals(UploadJobState.AWAITING_AUTH, queue.find(first.id)?.state)
-        assertEquals("not visible", queue.find(first.id)?.failureReason)
-        assertEquals(UploadJobState.QUEUED, queue.find(second.id)?.state)
-        assertEquals(listOf(second.id), scheduled)
-        root.deleteRecursively()
-        Unit
-    }
 
     @Test
-    fun visibleReconciliationKeepsFailedJobsQueuedAndContinues() = runBlocking {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val root = Files.createTempDirectory("scheduler-visible").toFile()
-        val queue = UploadQueueRepository(FakeUploadJobDao(), StagingStore(root))
-        val scheduler = TransferScheduler(context, queue)
-        val first = queue.enqueue(
-            IncomingInput.Url("https://books.test/first.fb2", "first.fb2"),
-            UploadSettingsSnapshot("https://one.example"),
-        )
-        val second = queue.enqueue(
-            IncomingInput.Url("https://books.test/second.fb2", "second.fb2"),
-            UploadSettingsSnapshot("https://one.example"),
-        )
-        queue.transition(first.id, UploadJobState.QUEUED)
-        queue.transition(second.id, UploadJobState.QUEUED)
-        val scheduled = mutableListOf<Long>()
+    fun visibleReconciliationKeepsFailedJobsQueuedAndContinues() =
+        runBlocking {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val root = Files.createTempDirectory("scheduler-visible").toFile()
+            val queue = UploadQueueRepository(FakeUploadJobDao(), StagingStore(root))
+            val scheduler = TransferScheduler(context, queue)
+            val first =
+                queue.enqueue(
+                    IncomingInput.Url("https://books.test/first.fb2", "first.fb2"),
+                    UploadSettingsSnapshot("https://one.example"),
+                )
+            val second =
+                queue.enqueue(
+                    IncomingInput.Url("https://books.test/second.fb2", "second.fb2"),
+                    UploadSettingsSnapshot("https://one.example"),
+                )
+            queue.transition(first.id, UploadJobState.QUEUED)
+            queue.transition(second.id, UploadJobState.QUEUED)
+            val scheduled = mutableListOf<Long>()
 
-        scheduler.ensureQueuedScheduled { id ->
-            if (id == first.id) error("not visible")
-            scheduled += id
+            scheduler.ensureQueuedScheduled { id ->
+                if (id == first.id) error("not visible")
+                scheduled += id
+            }
+
+            assertEquals(UploadJobState.QUEUED, queue.find(first.id)?.state)
+            assertEquals(UploadJobState.QUEUED, queue.find(second.id)?.state)
+            assertEquals(listOf(second.id), scheduled)
+            root.deleteRecursively()
+            Unit
         }
-
-        assertEquals(UploadJobState.QUEUED, queue.find(first.id)?.state)
-        assertEquals(UploadJobState.QUEUED, queue.find(second.id)?.state)
-        assertEquals(listOf(second.id), scheduled)
-        root.deleteRecursively()
-        Unit
-    }
 }

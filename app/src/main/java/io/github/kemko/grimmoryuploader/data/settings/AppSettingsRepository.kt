@@ -37,22 +37,25 @@ class AppSettingsRepository(
         val authMode = stringPreferencesKey("auth_mode")
     }
 
-    val settings: Flow<AppSettings> = dataStore.data.map { preferences ->
-        val serverUrl = preferences[Keys.serverUrl]
-        val confirmedUrl = preferences[Keys.confirmedHttpUrl]
-            ?: serverUrl.takeIf { preferences[Keys.httpConfirmed] == true }
-        AppSettings(
-            serverUrl = serverUrl,
-            libraryId = preferences[Keys.libraryId] ?: 1,
-            pathId = preferences[Keys.pathId] ?: 1,
-            recompressEpub = preferences[Keys.recompressEpub] ?: true,
-            httpConfirmed = serverUrl != null && serverUrl == confirmedUrl,
-            confirmedHttpUrl = confirmedUrl,
-            authMode = preferences[Keys.authMode]
-                ?.let { value -> runCatching { AuthMode.valueOf(value) }.getOrDefault(AuthMode.AUTO) }
-                ?: AuthMode.AUTO,
-        )
-    }
+    val settings: Flow<AppSettings> =
+        dataStore.data.map { preferences ->
+            val serverUrl = preferences[Keys.serverUrl]
+            val confirmedUrl =
+                preferences[Keys.confirmedHttpUrl]
+                    ?: serverUrl.takeIf { preferences[Keys.httpConfirmed] == true }
+            AppSettings(
+                serverUrl = serverUrl,
+                libraryId = preferences[Keys.libraryId] ?: 1,
+                pathId = preferences[Keys.pathId] ?: 1,
+                recompressEpub = preferences[Keys.recompressEpub] ?: true,
+                httpConfirmed = serverUrl != null && serverUrl == confirmedUrl,
+                confirmedHttpUrl = confirmedUrl,
+                authMode =
+                    preferences[Keys.authMode]
+                        ?.let { value -> runCatching { AuthMode.valueOf(value) }.getOrDefault(AuthMode.AUTO) }
+                        ?: AuthMode.AUTO,
+            )
+        }
 
     suspend fun current(): AppSettings = settings.first()
 
@@ -85,8 +88,11 @@ class AppSettingsRepository(
         val server = current().serverUrl
         dataStore.edit { preferences ->
             preferences.remove(Keys.httpConfirmed)
-            if (confirmed && server != null) preferences[Keys.confirmedHttpUrl] = server
-            else preferences.remove(Keys.confirmedHttpUrl)
+            if (confirmed && server != null) {
+                preferences[Keys.confirmedHttpUrl] = server
+            } else {
+                preferences.remove(Keys.confirmedHttpUrl)
+            }
         }
     }
 
@@ -94,8 +100,7 @@ class AppSettingsRepository(
         dataStore.edit { it[Keys.authMode] = mode.name }
     }
 
-    suspend fun requireServerUrl(): ServerUrl =
-        current().serverUrl?.let(ServerUrl::parse) ?: error("Server URL is not configured")
+    suspend fun requireServerUrl(): ServerUrl = current().serverUrl?.let(ServerUrl::parse) ?: error("Server URL is not configured")
 
     suspend fun requireCleartextConfirmation() {
         val value = current()
@@ -130,8 +135,11 @@ class AppSettingsRepository(
             preferences[Keys.recompressEpub] = recompressEpub
             preferences[Keys.authMode] = authMode.name
             preferences.remove(Keys.httpConfirmed)
-            if (normalized.startsWith("http://")) preferences[Keys.confirmedHttpUrl] = normalized
-            else preferences.remove(Keys.confirmedHttpUrl)
+            if (normalized.startsWith("http://")) {
+                preferences[Keys.confirmedHttpUrl] = normalized
+            } else {
+                preferences.remove(Keys.confirmedHttpUrl)
+            }
         }
     }
 }

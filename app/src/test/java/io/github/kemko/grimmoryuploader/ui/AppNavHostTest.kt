@@ -18,12 +18,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.test.core.app.ApplicationProvider
 import io.github.kemko.grimmoryuploader.data.auth.AesGcmTokenCipher
 import io.github.kemko.grimmoryuploader.di.AppContainer
-import java.io.File
-import java.security.SecureRandom
-import java.util.concurrent.atomic.AtomicBoolean
-import javax.crypto.spec.SecretKeySpec
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -34,6 +30,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowContentResolver
+import java.io.File
+import java.security.SecureRandom
+import java.util.concurrent.atomic.AtomicBoolean
+import javax.crypto.spec.SecretKeySpec
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -55,15 +55,18 @@ class AppNavHostTest {
 
     @Test
     fun incomingFirstLaunchStagesBeforeOnboardingAndConsumesIntent() {
-        val cipher = AesGcmTokenCipher(
-            SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
-        )
+        val cipher =
+            AesGcmTokenCipher(
+                SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
+            )
         val container = AppContainer(context, cipher)
-        val source = File(context.cacheDir, "incoming.fb2").apply {
-            writeText("<?xml version=\"1.0\"?><FictionBook/>")
-        }
-        val intent = Intent(Intent.ACTION_VIEW)
-            .setDataAndType(Uri.fromFile(source), "application/x-fictionbook+xml")
+        val source =
+            File(context.cacheDir, "incoming.fb2").apply {
+                writeText("<?xml version=\"1.0\"?><FictionBook/>")
+            }
+        val intent =
+            Intent(Intent.ACTION_VIEW)
+                .setDataAndType(Uri.fromFile(source), "application/x-fictionbook+xml")
         var consumed = false
 
         compose.setContent {
@@ -89,17 +92,20 @@ class AppNavHostTest {
 
     @Test
     fun contentProviderMetadataIsReadOffMainThread() {
-        val cipher = AesGcmTokenCipher(
-            SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
-        )
+        val cipher =
+            AesGcmTokenCipher(
+                SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
+            )
         val container = AppContainer(context, cipher)
-        val source = File(context.cacheDir, "provider.fb2").apply {
-            writeText("<?xml version=\"1.0\"?><FictionBook/>")
-        }
+        val source =
+            File(context.cacheDir, "provider.fb2").apply {
+                writeText("<?xml version=\"1.0\"?><FictionBook/>")
+            }
         val provider = BookProvider(source)
         ShadowContentResolver.registerProviderInternal("off-main-books", provider)
-        val intent = Intent(Intent.ACTION_VIEW)
-            .setData(Uri.parse("content://off-main-books/book"))
+        val intent =
+            Intent(Intent.ACTION_VIEW)
+                .setData(Uri.parse("content://off-main-books/book"))
 
         compose.setContent {
             MaterialTheme { AppNavHost(container = container, launchIntent = intent) }
@@ -113,21 +119,24 @@ class AppNavHostTest {
 
     @Test
     fun incomingWaitsForStartupReconciliationBeforeStaging() {
-        val cipher = AesGcmTokenCipher(
-            SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
-        )
+        val cipher =
+            AesGcmTokenCipher(
+                SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
+            )
         val container = AppContainer(context, cipher)
-        val source = File(context.cacheDir, "startup.fb2").apply {
-            writeText("<?xml version=\"1.0\"?><FictionBook/>")
-        }
+        val source =
+            File(context.cacheDir, "startup.fb2").apply {
+                writeText("<?xml version=\"1.0\"?><FictionBook/>")
+            }
         val ready = CompletableDeferred<Unit>()
 
         compose.setContent {
             MaterialTheme {
                 AppNavHost(
                     container = container,
-                    launchIntent = Intent(Intent.ACTION_VIEW)
-                        .setDataAndType(Uri.fromFile(source), "application/x-fictionbook+xml"),
+                    launchIntent =
+                        Intent(Intent.ACTION_VIEW)
+                            .setDataAndType(Uri.fromFile(source), "application/x-fictionbook+xml"),
                     awaitStartupReconciliation = { ready.await() },
                 )
             }
@@ -143,7 +152,9 @@ class AppNavHostTest {
         container.database.close()
     }
 
-    private class BookProvider(private val source: File) : ContentProvider() {
+    private class BookProvider(
+        private val source: File,
+    ) : ContentProvider() {
         val queryOffMain = AtomicBoolean()
         val typeOffMain = AtomicBoolean()
 
@@ -167,12 +178,21 @@ class AppNavHostTest {
             return "application/x-fictionbook+xml"
         }
 
-        override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor =
-            ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY)
+        override fun openFile(
+            uri: Uri,
+            mode: String,
+        ): ParcelFileDescriptor = ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY)
 
-        override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+        override fun insert(
+            uri: Uri,
+            values: ContentValues?,
+        ): Uri? = null
 
-        override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
+        override fun delete(
+            uri: Uri,
+            selection: String?,
+            selectionArgs: Array<out String>?,
+        ): Int = 0
 
         override fun update(
             uri: Uri,

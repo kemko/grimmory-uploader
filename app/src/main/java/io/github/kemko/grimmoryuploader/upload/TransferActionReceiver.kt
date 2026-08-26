@@ -11,7 +11,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class TransferActionReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
+    override fun onReceive(
+        context: Context,
+        intent: Intent,
+    ) {
         val jobId = intent.getLongExtra(EXTRA_JOB_ID, -1L)
         if (jobId < 0) return
         val app = context.applicationContext as GrimmoryUploaderApp

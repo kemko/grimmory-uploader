@@ -4,22 +4,29 @@ import android.content.ContentResolver
 import android.net.Uri
 import io.github.kemko.grimmoryuploader.share.IncomingIntentParser
 import java.io.File
-import java.io.InputStream
 import java.io.IOException
+import java.io.InputStream
 import java.util.UUID
 
-class StagingLimitException(message: String) : IOException(message)
+class StagingLimitException(
+    message: String,
+) : IOException(message)
 
 class StagingStore(
     private val pendingDirectory: File,
     val maxBytes: Long = MAX_STAGING_BYTES,
 ) {
     val root: File get() = pendingDirectory.canonicalFile
+
     init {
         require(pendingDirectory.isDirectory || pendingDirectory.mkdirs()) { "Cannot create staging directory" }
     }
 
-    fun stage(resolver: ContentResolver, uri: Uri, displayName: String): File {
+    fun stage(
+        resolver: ContentResolver,
+        uri: Uri,
+        displayName: String,
+    ): File {
         val target = newFile(displayName)
         try {
             resolver.openInputStream(uri)?.use { input ->

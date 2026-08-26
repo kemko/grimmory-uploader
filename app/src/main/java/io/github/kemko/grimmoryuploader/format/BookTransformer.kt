@@ -19,22 +19,38 @@ class BookTransformer {
             BookFormat.PDF -> source.inputStream().use { it.copyCancellableTo(output, cancelled) }
             BookFormat.FB2 -> source.inputStream().use { it.copyCancellableTo(output, cancelled) }
             BookFormat.FB2_ZIP -> copyFb2FromZip(source, output, cancelled)
-            BookFormat.EPUB -> if (recompressEpub) recompressEpub(source, output, cancelled) else {
-                source.inputStream().use { it.copyCancellableTo(output, cancelled) }
-            }
+            BookFormat.EPUB ->
+                if (recompressEpub) {
+                    recompressEpub(source, output, cancelled)
+                } else {
+                    source.inputStream().use { it.copyCancellableTo(output, cancelled) }
+                }
         }
     }
 
-    private fun copyFb2FromZip(source: File, output: OutputStream, cancelled: () -> Boolean = { false }) {
+    private fun copyFb2FromZip(
+        source: File,
+        output: OutputStream,
+        cancelled: () -> Boolean = { false },
+    ) {
         ZipGuards.validateArchiveMetadata(source)
         ZipFile(source).use { zip ->
-            val entry = zip.entries().asSequence().filter { !it.isDirectory && it.name.lowercase().endsWith(".fb2") }.singleOrNull()
-                ?: throw UnsupportedBookException("Expected exactly one FB2 entry")
+            val entry =
+                zip
+                    .entries()
+                    .asSequence()
+                    .filter { !it.isDirectory && it.name.lowercase().endsWith(".fb2") }
+                    .singleOrNull()
+                    ?: throw UnsupportedBookException("Expected exactly one FB2 entry")
             zip.getInputStream(entry).use { it.copyCancellableTo(output, cancelled) }
         }
     }
 
-    private fun recompressEpub(source: File, output: OutputStream, cancelled: () -> Boolean = { false }) {
+    private fun recompressEpub(
+        source: File,
+        output: OutputStream,
+        cancelled: () -> Boolean = { false },
+    ) {
         ZipGuards.validateArchiveMetadata(source)
         ZipFile(source).use { input ->
             val zipOutput = ZipOutputStream(output).apply { setLevel(Deflater.BEST_COMPRESSION) }
@@ -42,20 +58,24 @@ class BookTransformer {
             val mimetypeBytes = input.getInputStream(mimetype).use { it.readNBytes(64) }
             require(mimetypeBytes.toString(Charsets.UTF_8).trim() == "application/epub+zip") { "Invalid EPUB mimetype" }
             zipOutput.use { zip ->
-                val stored = java.util.zip.ZipEntry("mimetype").apply {
-                    method = java.util.zip.ZipEntry.STORED
-                    size = mimetypeBytes.size.toLong()
-                    val checksum = CRC32()
-                    checksum.update(mimetypeBytes)
-                    crc = checksum.value
-                }
+                val stored =
+                    java.util.zip.ZipEntry("mimetype").apply {
+                        method = java.util.zip.ZipEntry.STORED
+                        size = mimetypeBytes.size.toLong()
+                        val checksum = CRC32()
+                        checksum.update(mimetypeBytes)
+                        crc = checksum.value
+                    }
                 zip.putNextEntry(stored)
                 zip.write(mimetypeBytes)
                 zip.closeEntry()
                 input.entries().asSequence().filter { it.name != "mimetype" }.forEach { entry ->
                     checkNotCancelled(cancelled)
                     ZipGuards.validateName(entry.name)
-                    val next = java.util.zip.ZipEntry(entry.name).apply { method = java.util.zip.ZipEntry.DEFLATED }
+                    val next =
+                        java.util.zip
+                            .ZipEntry(entry.name)
+                            .apply { method = java.util.zip.ZipEntry.DEFLATED }
                     zip.putNextEntry(next)
                     input.getInputStream(entry).use { it.copyCancellableTo(zip, cancelled) }
                     zip.closeEntry()
@@ -65,7 +85,10 @@ class BookTransformer {
     }
 }
 
-private fun java.io.InputStream.copyCancellableTo(output: OutputStream, cancelled: () -> Boolean) {
+private fun java.io.InputStream.copyCancellableTo(
+    output: OutputStream,
+    cancelled: () -> Boolean,
+) {
     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
     while (true) {
         checkNotCancelled(cancelled)

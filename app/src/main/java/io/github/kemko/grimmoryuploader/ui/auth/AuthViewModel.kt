@@ -6,14 +6,20 @@ import io.github.kemko.grimmoryuploader.data.auth.TokenPair
 import io.github.kemko.grimmoryuploader.data.settings.AuthMode
 import io.github.kemko.grimmoryuploader.di.AppContainer
 
-class AuthViewModel(private val container: AppContainer) {
+class AuthViewModel(
+    private val container: AppContainer,
+) {
     private val auth: AuthRepository = container.auth
 
     suspend fun isAuthenticated(): Boolean = auth.isAuthenticated { container.api.currentUser() }
 
-    suspend fun login(username: String, password: String): Result<TokenPair> = runCatching {
-        auth.login(username, password)
-    }
+    suspend fun login(
+        username: String,
+        password: String,
+    ): Result<TokenPair> =
+        runCatching {
+            auth.login(username, password)
+        }
 
     suspend fun startOidc(): Result<Intent> = runCatching { container.oidc.start() }
 

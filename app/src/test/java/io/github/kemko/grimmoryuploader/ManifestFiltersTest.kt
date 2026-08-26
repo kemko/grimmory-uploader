@@ -1,12 +1,12 @@
 package io.github.kemko.grimmoryuploader
 
-import java.io.File
-import org.w3c.dom.Document
-import org.w3c.dom.Element
-import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.w3c.dom.Document
+import org.w3c.dom.Element
+import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
 
 class ManifestFiltersTest {
     @Test
@@ -33,34 +33,41 @@ class ManifestFiltersTest {
         assertFalse(filters.any { ACTION_VIEW in it.actions && "text/plain" in it.mimeTypes })
     }
 
-    private fun manifest(): Document = DocumentBuilderFactory.newInstance()
-        .newDocumentBuilder()
-        .parse(File("src/main/AndroidManifest.xml"))
+    private fun manifest(): Document =
+        DocumentBuilderFactory
+            .newInstance()
+            .newDocumentBuilder()
+            .parse(File("src/main/AndroidManifest.xml"))
 
     private fun mainActivityFilters(document: Document): List<IntentFilter> {
-        val activity = (0 until document.getElementsByTagName("activity").length)
-            .map { document.getElementsByTagName("activity").item(it) as Element }
-            .first { it.getAttribute("android:name") == ".MainActivity" }
+        val activity =
+            (0 until document.getElementsByTagName("activity").length)
+                .map { document.getElementsByTagName("activity").item(it) as Element }
+                .first { it.getAttribute("android:name") == ".MainActivity" }
         return (0 until activity.getElementsByTagName("intent-filter").length)
             .map { activity.getElementsByTagName("intent-filter").item(it) as Element }
             .map { filter ->
                 IntentFilter(
-                    actions = (0 until filter.getElementsByTagName("action").length)
-                        .map { filter.getElementsByTagName("action").item(it) as Element }
-                        .map { it.getAttribute("android:name") }
-                        .toSet(),
-                    mimeTypes = (0 until filter.getElementsByTagName("data").length)
-                        .map { filter.getElementsByTagName("data").item(it) as Element }
-                        .mapNotNull { it.getAttribute("android:mimeType").takeIf(String::isNotBlank) }
-                        .toSet(),
-                    schemes = (0 until filter.getElementsByTagName("data").length)
-                        .map { filter.getElementsByTagName("data").item(it) as Element }
-                        .mapNotNull { it.getAttribute("android:scheme").takeIf(String::isNotBlank) }
-                        .toSet(),
-                    suffixes = (0 until filter.getElementsByTagName("data").length)
-                        .map { filter.getElementsByTagName("data").item(it) as Element }
-                        .mapNotNull { it.getAttribute("android:pathSuffix").takeIf(String::isNotBlank) }
-                        .toSet(),
+                    actions =
+                        (0 until filter.getElementsByTagName("action").length)
+                            .map { filter.getElementsByTagName("action").item(it) as Element }
+                            .map { it.getAttribute("android:name") }
+                            .toSet(),
+                    mimeTypes =
+                        (0 until filter.getElementsByTagName("data").length)
+                            .map { filter.getElementsByTagName("data").item(it) as Element }
+                            .mapNotNull { it.getAttribute("android:mimeType").takeIf(String::isNotBlank) }
+                            .toSet(),
+                    schemes =
+                        (0 until filter.getElementsByTagName("data").length)
+                            .map { filter.getElementsByTagName("data").item(it) as Element }
+                            .mapNotNull { it.getAttribute("android:scheme").takeIf(String::isNotBlank) }
+                            .toSet(),
+                    suffixes =
+                        (0 until filter.getElementsByTagName("data").length)
+                            .map { filter.getElementsByTagName("data").item(it) as Element }
+                            .mapNotNull { it.getAttribute("android:pathSuffix").takeIf(String::isNotBlank) }
+                            .toSet(),
                 )
             }
     }
@@ -75,13 +82,14 @@ class ManifestFiltersTest {
     private companion object {
         const val ACTION_SEND = "android.intent.action.SEND"
         const val ACTION_VIEW = "android.intent.action.VIEW"
-        val BOOK_MIME_TYPES = setOf(
-            "application/epub+zip",
-            "application/pdf",
-            "application/x-fictionbook+xml",
-            "application/xml",
-            "application/zip",
-            "application/octet-stream",
-        )
+        val BOOK_MIME_TYPES =
+            setOf(
+                "application/epub+zip",
+                "application/pdf",
+                "application/x-fictionbook+xml",
+                "application/xml",
+                "application/zip",
+                "application/octet-stream",
+            )
     }
 }

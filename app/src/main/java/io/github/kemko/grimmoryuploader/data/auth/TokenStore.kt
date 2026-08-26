@@ -26,13 +26,17 @@ data class TokenPair(
 
 interface TokenStore {
     suspend fun read(): TokenPair?
+
     suspend fun write(tokens: TokenPair)
+
     suspend fun clear()
 }
 
 interface OidcPendingStore {
     suspend fun readPendingOidc(): OidcPendingRequest?
+
     suspend fun writePendingOidc(request: OidcPendingRequest)
+
     suspend fun clearPendingOidc()
 }
 
@@ -44,7 +48,9 @@ private data class StoredTokens(
     val serverUrl: String? = null,
 )
 
-class AesGcmTokenCipher(private val key: SecretKey) {
+class AesGcmTokenCipher(
+    private val key: SecretKey,
+) {
     fun encrypt(plainText: ByteArray): ByteArray {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key)
@@ -67,39 +73,46 @@ class EncryptedTokenStore(
     context: Context,
     private val json: Json = Json,
     tokenCipher: AesGcmTokenCipher? = null,
-) : TokenStore, OidcPendingStore {
+) : TokenStore,
+    OidcPendingStore {
     private val file = File(context.noBackupFilesDir, "auth.tokens")
     private val pendingOidcFile = File(context.noBackupFilesDir, "auth.oidc")
     private val cipher = tokenCipher ?: AesGcmTokenCipher(loadOrCreateKey())
 
-    override suspend fun read(): TokenPair? = withContext(Dispatchers.IO) {
-        readEncrypted<StoredTokens>(file)?.let {
-            TokenPair(it.accessToken, it.refreshToken, it.expiresAtMillis, it.serverUrl)
+    override suspend fun read(): TokenPair? =
+        withContext(Dispatchers.IO) {
+            readEncrypted<StoredTokens>(file)?.let {
+                TokenPair(it.accessToken, it.refreshToken, it.expiresAtMillis, it.serverUrl)
+            }
         }
-    }
 
-    override suspend fun write(tokens: TokenPair) = withContext(Dispatchers.IO) {
-        val payload = StoredTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresAtMillis, tokens.serverUrl)
-        writeEncrypted(file, payload)
-    }
+    override suspend fun write(tokens: TokenPair) =
+        withContext(Dispatchers.IO) {
+            val payload = StoredTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresAtMillis, tokens.serverUrl)
+            writeEncrypted(file, payload)
+        }
 
-    override suspend fun clear() = withContext(Dispatchers.IO) {
-        file.delete()
-        Unit
-    }
+    override suspend fun clear() =
+        withContext(Dispatchers.IO) {
+            file.delete()
+            Unit
+        }
 
-    override suspend fun readPendingOidc(): OidcPendingRequest? = withContext(Dispatchers.IO) {
-        readEncrypted<OidcPendingRequest>(pendingOidcFile)
-    }
+    override suspend fun readPendingOidc(): OidcPendingRequest? =
+        withContext(Dispatchers.IO) {
+            readEncrypted<OidcPendingRequest>(pendingOidcFile)
+        }
 
-    override suspend fun writePendingOidc(request: OidcPendingRequest) = withContext(Dispatchers.IO) {
-        writeEncrypted(pendingOidcFile, request)
-    }
+    override suspend fun writePendingOidc(request: OidcPendingRequest) =
+        withContext(Dispatchers.IO) {
+            writeEncrypted(pendingOidcFile, request)
+        }
 
-    override suspend fun clearPendingOidc() = withContext(Dispatchers.IO) {
-        pendingOidcFile.delete()
-        Unit
-    }
+    override suspend fun clearPendingOidc() =
+        withContext(Dispatchers.IO) {
+            pendingOidcFile.delete()
+            Unit
+        }
 
     private inline fun <reified T> readEncrypted(source: File): T? {
         if (!source.exists()) return null
@@ -111,7 +124,10 @@ class EncryptedTokenStore(
         }
     }
 
-    private inline fun <reified T> writeEncrypted(target: File, value: T) {
+    private inline fun <reified T> writeEncrypted(
+        target: File,
+        value: T,
+    ) {
         target.parentFile?.mkdirs()
         val temporary = File(target.parentFile, "${target.name}.tmp")
         try {
@@ -134,19 +150,23 @@ class EncryptedTokenStore(
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         val existing = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
         if (existing != null) return existing
-        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {
-            init(
-                KeyGenParameterSpec.Builder(
-                    KEY_ALIAS,
-                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+        return KeyGenerator
+            .getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+            .apply {
+                init(
+                    KeyGenParameterSpec
+                        .Builder(
+                            KEY_ALIAS,
+                            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+                        ).setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                        .setRandomizedEncryptionRequired(true)
+                        .build(),
                 )
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .setRandomizedEncryptionRequired(true)
-                    .build(),
-            )
-        }.generateKey()
+            }.generateKey()
     }
 
-    private companion object { const val KEY_ALIAS = "grimmory-uploader.auth" }
+    private companion object {
+        const val KEY_ALIAS = "grimmory-uploader.auth"
+    }
 }

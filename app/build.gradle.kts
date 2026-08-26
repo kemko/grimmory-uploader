@@ -15,12 +15,17 @@ val appVersionCode = rootProject.extra["appVersionCode"] as Int
 
 android {
     namespace = "io.github.kemko.grimmoryuploader"
-    compileSdk = 36
+    compileSdk {
+        version =
+            release(37) {
+                minorApiLevel = 1
+            }
+    }
 
     defaultConfig {
         applicationId = "io.github.kemko.grimmoryuploader"
         minSdk = 35
-        targetSdk = 36
+        targetSdk = 37
         versionCode = appVersionCode
         versionName = appVersionName
         manifestPlaceholders["appAuthRedirectScheme"] = "io.github.kemko.grimmoryuploader"
@@ -107,13 +112,22 @@ kover {
 }
 
 dependencyCheck {
-    autoUpdate = providers.gradleProperty("dependencyCheckAutoUpdate").map(String::toBoolean).orElse(false).get()
+    autoUpdate =
+        providers
+            .gradleProperty("dependencyCheckAutoUpdate")
+            .map(String::toBoolean)
+            .orElse(false)
+            .get()
     failBuildOnCVSS = 7.0f
     failOnError = true
     formats = listOf("HTML", "SARIF")
     suppressionFile = rootProject.file("config/dependency-check-suppressions.xml").absolutePath
     nvd {
-        apiKey = providers.environmentVariable("NVD_API_KEY").orNull
+        providers
+            .environmentVariable("NVD_API_KEY")
+            .orNull
+            ?.takeIf(String::isNotBlank)
+            ?.let { apiKey = it }
     }
     hostedSuppressions {
         enabled = false

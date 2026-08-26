@@ -32,36 +32,38 @@ class TokenStoreTest {
     }
 
     @Test
-    fun encryptedStoreSurvivesRecreationAndDropsCorruptPayloads() = runBlocking {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val tokenFile = context.noBackupFilesDir.resolve("auth.tokens").apply { delete() }
-        val oidcFile = context.noBackupFilesDir.resolve("auth.oidc").apply { delete() }
-        val key = SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES")
-        val cipher = AesGcmTokenCipher(key)
-        val store = EncryptedTokenStore(context, tokenCipher = cipher)
-        val tokens = TokenPair("access-secret", "refresh-secret", 42)
-        val pending = OidcPendingRequest(
-            "state",
-            "verifier",
-            "nonce",
-            "app:/callback",
-            "https://one.example",
-        )
+    fun encryptedStoreSurvivesRecreationAndDropsCorruptPayloads() =
+        runBlocking {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val tokenFile = context.noBackupFilesDir.resolve("auth.tokens").apply { delete() }
+            val oidcFile = context.noBackupFilesDir.resolve("auth.oidc").apply { delete() }
+            val key = SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES")
+            val cipher = AesGcmTokenCipher(key)
+            val store = EncryptedTokenStore(context, tokenCipher = cipher)
+            val tokens = TokenPair("access-secret", "refresh-secret", 42)
+            val pending =
+                OidcPendingRequest(
+                    "state",
+                    "verifier",
+                    "nonce",
+                    "app:/callback",
+                    "https://one.example",
+                )
 
-        store.write(tokens)
-        store.writePendingOidc(pending)
-        assertTrue(tokenFile.parentFile == context.noBackupFilesDir)
-        assertFalse(tokenFile.readBytes().decodeToString().contains("access-secret"))
+            store.write(tokens)
+            store.writePendingOidc(pending)
+            assertTrue(tokenFile.parentFile == context.noBackupFilesDir)
+            assertFalse(tokenFile.readBytes().decodeToString().contains("access-secret"))
 
-        val recreated = EncryptedTokenStore(context, tokenCipher = cipher)
-        assertEquals(tokens, recreated.read())
-        assertEquals(pending, recreated.readPendingOidc())
-        tokenFile.writeText("corrupt")
-        assertNull(recreated.read())
-        assertFalse(tokenFile.exists())
+            val recreated = EncryptedTokenStore(context, tokenCipher = cipher)
+            assertEquals(tokens, recreated.read())
+            assertEquals(pending, recreated.readPendingOidc())
+            tokenFile.writeText("corrupt")
+            assertNull(recreated.read())
+            assertFalse(tokenFile.exists())
 
-        recreated.clearPendingOidc()
-        assertFalse(oidcFile.exists())
-        recreated.clear()
-    }
+            recreated.clearPendingOidc()
+            assertFalse(oidcFile.exists())
+            recreated.clear()
+        }
 }

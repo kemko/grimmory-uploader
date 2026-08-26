@@ -17,8 +17,9 @@ class GrimmoryUploaderApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
-        startupReconciliation = CoroutineScope(SupervisorJob() + Dispatchers.IO).async {
-            container.pendingJobReconciler.reconcile()
-        }
+        startupReconciliation =
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).async {
+                container.pendingJobReconciler.reconcile()
+            }
     }
 }

@@ -1,11 +1,11 @@
 package io.github.kemko.grimmoryuploader.build
 
 import io.github.kemko.grimmoryuploader.BuildConfig
-import java.io.File
-import java.util.Properties
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import java.util.Properties
 
 class VersioningTest {
     @Test
@@ -27,5 +27,13 @@ class VersioningTest {
     @Test
     fun debugBuildDoesNotRequireReleaseSigningSecrets() {
         assertTrue(!BuildConfig.RELEASE_SIGNING_REQUIRED)
+    }
+
+    @Test
+    fun usesAndroidSdk37() {
+        val buildScript = File("build.gradle.kts").readText()
+
+        assertTrue(Regex("""release\(37\)\s*\{\s*minorApiLevel = 1""").containsMatchIn(buildScript))
+        assertTrue(buildScript.contains("targetSdk = 37"))
     }
 }

@@ -3,21 +3,21 @@ package io.github.kemko.grimmoryuploader.upload
 import android.content.Context
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
-import java.io.File
-import java.io.FileNotFoundException
-import java.io.InputStream
-import java.nio.file.Files
-import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.io.File
+import java.io.FileNotFoundException
+import java.io.InputStream
+import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -78,33 +78,34 @@ class StagingStoreTest {
     }
 
     @Test
-    fun queueStagesLocalContentOffTheCallerThread() = runBlocking {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val root = Files.createTempDirectory("pending-dispatcher").toFile()
-        val uri = Uri.parse("content://books/threaded")
-        val readThread = AtomicReference<Thread>()
-        val bytes = "book".encodeToByteArray()
-        var index = 0
-        shadowOf(context.contentResolver).registerInputStream(
-            uri,
-            object : InputStream() {
-                override fun read(): Int {
-                    readThread.compareAndSet(null, Thread.currentThread())
-                    return if (index < bytes.size) bytes[index++].toInt() else -1
-                }
-            },
-        )
-        val repository = UploadQueueRepository(FakeUploadJobDao(), StagingStore(root))
-        val callerThread = Thread.currentThread()
+    fun queueStagesLocalContentOffTheCallerThread() =
+        runBlocking {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val root = Files.createTempDirectory("pending-dispatcher").toFile()
+            val uri = Uri.parse("content://books/threaded")
+            val readThread = AtomicReference<Thread>()
+            val bytes = "book".encodeToByteArray()
+            var index = 0
+            shadowOf(context.contentResolver).registerInputStream(
+                uri,
+                object : InputStream() {
+                    override fun read(): Int {
+                        readThread.compareAndSet(null, Thread.currentThread())
+                        return if (index < bytes.size) bytes[index++].toInt() else -1
+                    }
+                },
+            )
+            val repository = UploadQueueRepository(FakeUploadJobDao(), StagingStore(root))
+            val callerThread = Thread.currentThread()
 
-        repository.persist(
-            io.github.kemko.grimmoryuploader.share.IncomingInput.File(uri.toString(), "book.fb2", null),
-            context.contentResolver,
-        )
+            repository.persist(
+                io.github.kemko.grimmoryuploader.share.IncomingInput
+                    .File(uri.toString(), "book.fb2", null),
+                context.contentResolver,
+            )
 
-        assertTrue(readThread.get() != callerThread)
-        root.deleteRecursively()
-        Unit
-    }
-
+            assertTrue(readThread.get() != callerThread)
+            root.deleteRecursively()
+            Unit
+        }
 }

@@ -14,13 +14,14 @@ class FakeUploadJobDao : UploadJobDao {
     var progressUpdateCount = 0
         private set
 
-    override suspend fun insert(job: UploadJobEntity): Long = synchronized(this) {
-        nextId.also { id ->
-            jobs[id] = job.copy(id = id)
-            nextId++
-            emit()
+    override suspend fun insert(job: UploadJobEntity): Long =
+        synchronized(this) {
+            nextId.also { id ->
+                jobs[id] = job.copy(id = id)
+                nextId++
+                emit()
+            }
         }
-    }
 
     override suspend fun find(id: Long): UploadJobEntity? = synchronized(this) { jobs[id] }
 
@@ -36,13 +37,15 @@ class FakeUploadJobDao : UploadJobDao {
 
     override fun observeAll() = values.asStateFlow()
 
-    override suspend fun pending(): List<UploadJobEntity> = synchronized(this) {
-        jobs.values.filter { it.state !in TERMINAL_STATES }
-    }
+    override suspend fun pending(): List<UploadJobEntity> =
+        synchronized(this) {
+            jobs.values.filter { it.state !in TERMINAL_STATES }
+        }
 
-    override suspend fun pendingIntake(): UploadJobEntity? = synchronized(this) {
-        jobs.values.firstOrNull { it.state == UploadJobState.STAGED }
-    }
+    override suspend fun pendingIntake(): UploadJobEntity? =
+        synchronized(this) {
+            jobs.values.firstOrNull { it.state == UploadJobState.STAGED }
+        }
 
     override suspend fun transition(
         id: Long,
@@ -58,7 +61,8 @@ class FakeUploadJobDao : UploadJobDao {
             }
         }
         return change(id) { job ->
-            job.takeIf { it.state in fromStates }
+            job
+                .takeIf { it.state in fromStates }
                 ?.copy(state = toState, failureReason = reason, updatedAt = updatedAt)
         }
     }
@@ -71,20 +75,27 @@ class FakeUploadJobDao : UploadJobDao {
         recompressEpub: Boolean,
         serverCleartextConfirmed: Boolean,
         updatedAt: Long,
-    ): Int = change(id) { job ->
-        job.takeIf { it.serverUrl.isBlank() && it.state == UploadJobState.STAGED }?.copy(
-            serverUrl = serverUrl,
-            libraryId = libraryId,
-            pathId = pathId,
-            recompressEpub = recompressEpub,
-            serverCleartextConfirmed = serverCleartextConfirmed,
-            updatedAt = updatedAt,
-        )
-    }
-
-    override suspend fun attachStagedPath(id: Long, path: String, displayName: String, updatedAt: Long): Int =
+    ): Int =
         change(id) { job ->
-            job.takeIf { it.state !in TERMINAL_STATES }
+            job.takeIf { it.serverUrl.isBlank() && it.state == UploadJobState.STAGED }?.copy(
+                serverUrl = serverUrl,
+                libraryId = libraryId,
+                pathId = pathId,
+                recompressEpub = recompressEpub,
+                serverCleartextConfirmed = serverCleartextConfirmed,
+                updatedAt = updatedAt,
+            )
+        }
+
+    override suspend fun attachStagedPath(
+        id: Long,
+        path: String,
+        displayName: String,
+        updatedAt: Long,
+    ): Int =
+        change(id) { job ->
+            job
+                .takeIf { it.state !in TERMINAL_STATES }
                 ?.copy(stagedPath = path, displayName = displayName, updatedAt = updatedAt)
         }
 
@@ -92,29 +103,52 @@ class FakeUploadJobDao : UploadJobDao {
         change(id) { it.copy(stagedPath = null) }
     }
 
-    override suspend fun updateProgress(id: Long, stage: String, current: Long, total: Long, updatedAt: Long): Int {
-        val changed = change(id) { job ->
-            job.takeIf { it.state in setOf(UploadJobState.QUEUED, UploadJobState.RUNNING) }
-                ?.copy(progressStage = stage, progressCurrent = current, progressTotal = total, updatedAt = updatedAt)
-        }
+    override suspend fun updateProgress(
+        id: Long,
+        stage: String,
+        current: Long,
+        total: Long,
+        updatedAt: Long,
+    ): Int {
+        val changed =
+            change(id) { job ->
+                job
+                    .takeIf { it.state in setOf(UploadJobState.QUEUED, UploadJobState.RUNNING) }
+                    ?.copy(progressStage = stage, progressCurrent = current, progressTotal = total, updatedAt = updatedAt)
+            }
         if (changed == 1) progressUpdateCount++
         return changed
     }
 
-    override suspend fun confirmSourceCleartext(id: Long, updatedAt: Long): Int = change(id) { job ->
-        job.takeIf { it.state == UploadJobState.AWAITING_CLEARTEXT }
-            ?.copy(state = UploadJobState.QUEUED, sourceCleartextConfirmed = true, failureReason = null, updatedAt = updatedAt)
-    }
+    override suspend fun confirmSourceCleartext(
+        id: Long,
+        updatedAt: Long,
+    ): Int =
+        change(id) { job ->
+            job
+                .takeIf { it.state == UploadJobState.AWAITING_CLEARTEXT }
+                ?.copy(state = UploadJobState.QUEUED, sourceCleartextConfirmed = true, failureReason = null, updatedAt = updatedAt)
+        }
 
-    override suspend fun confirmServerCleartext(id: Long, updatedAt: Long): Int = change(id) { job ->
-        job.takeIf { it.state == UploadJobState.AWAITING_CLEARTEXT }
-            ?.copy(state = UploadJobState.QUEUED, serverCleartextConfirmed = true, failureReason = null, updatedAt = updatedAt)
-    }
+    override suspend fun confirmServerCleartext(
+        id: Long,
+        updatedAt: Long,
+    ): Int =
+        change(id) { job ->
+            job
+                .takeIf { it.state == UploadJobState.AWAITING_CLEARTEXT }
+                ?.copy(state = UploadJobState.QUEUED, serverCleartextConfirmed = true, failureReason = null, updatedAt = updatedAt)
+        }
 
-    override suspend fun retry(id: Long, updatedAt: Long): Int = change(id) { job ->
-        job.takeIf { it.state == UploadJobState.FAILED && it.sourceUrl != null }
-            ?.copy(state = UploadJobState.QUEUED, failureReason = null, updatedAt = updatedAt)
-    }
+    override suspend fun retry(
+        id: Long,
+        updatedAt: Long,
+    ): Int =
+        change(id) { job ->
+            job
+                .takeIf { it.state == UploadJobState.FAILED && it.sourceUrl != null }
+                ?.copy(state = UploadJobState.QUEUED, failureReason = null, updatedAt = updatedAt)
+        }
 
     suspend fun replace(job: UploadJobEntity) {
         synchronized(this) {
@@ -127,12 +161,16 @@ class FakeUploadJobDao : UploadJobDao {
         stagedPathBeforeTransition = path
     }
 
-    private inline fun change(id: Long, transform: (UploadJobEntity) -> UploadJobEntity?): Int = synchronized(this) {
-        val updated = jobs[id]?.let(transform) ?: return@synchronized 0
-        jobs[id] = updated
-        emit()
-        1
-    }
+    private inline fun change(
+        id: Long,
+        transform: (UploadJobEntity) -> UploadJobEntity?,
+    ): Int =
+        synchronized(this) {
+            val updated = jobs[id]?.let(transform) ?: return@synchronized 0
+            jobs[id] = updated
+            emit()
+            1
+        }
 
     private fun emit() {
         values.value = jobs.values.sortedByDescending(UploadJobEntity::createdAt)

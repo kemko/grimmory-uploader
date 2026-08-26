@@ -39,23 +39,28 @@ data class IncomingIntentData(
     val title: String? = null,
 )
 
-class IncomingIntentParser(private val resolver: ContentResolver? = null) {
+class IncomingIntentParser(
+    private val resolver: ContentResolver? = null,
+) {
     fun parse(intent: Intent): IncomingInput {
         val data = intent.data
         val stream = intent.getParcelableExtraCompat(Intent.EXTRA_STREAM)
         val sourceUri = data ?: stream
-        return parse(IncomingIntentData(
-            action = intent.action,
-            dataUri = data?.toString(),
-            streamUri = stream?.toString(),
-            text = intent.getStringExtra(Intent.EXTRA_TEXT),
-            mimeType = intent.type,
-            displayName = sourceUri
-                ?.takeIf { it.scheme.equals(ContentResolver.SCHEME_CONTENT, ignoreCase = true) }
-                ?.let { uri -> resolver?.let { runCatching { contentName(it, uri) }.getOrNull() } },
-            contentDisposition = intent.getStringExtra(CONTENT_DISPOSITION),
-            title = intent.getStringExtra(Intent.EXTRA_TITLE),
-        ))
+        return parse(
+            IncomingIntentData(
+                action = intent.action,
+                dataUri = data?.toString(),
+                streamUri = stream?.toString(),
+                text = intent.getStringExtra(Intent.EXTRA_TEXT),
+                mimeType = intent.type,
+                displayName =
+                    sourceUri
+                        ?.takeIf { it.scheme.equals(ContentResolver.SCHEME_CONTENT, ignoreCase = true) }
+                        ?.let { uri -> resolver?.let { runCatching { contentName(it, uri) }.getOrNull() } },
+                contentDisposition = intent.getStringExtra(CONTENT_DISPOSITION),
+                title = intent.getStringExtra(Intent.EXTRA_TITLE),
+            ),
+        )
     }
 
     fun parse(input: IncomingIntentData): IncomingInput {
@@ -79,17 +84,25 @@ class IncomingIntentParser(private val resolver: ContentResolver? = null) {
         return IncomingInput.Url(text, urlFilename(text))
     }
 
-    private fun fileInput(uri: String, input: IncomingIntentData): IncomingInput.File {
-        val name = filenameFromContentDisposition(input.contentDisposition)
-            ?: input.title
-            ?: input.displayName
-            ?: runCatching { URLDecoder.decode(uri.substringAfterLast('/'), Charsets.UTF_8) }.getOrDefault("book")
+    private fun fileInput(
+        uri: String,
+        input: IncomingIntentData,
+    ): IncomingInput.File {
+        val name =
+            filenameFromContentDisposition(input.contentDisposition)
+                ?: input.title
+                ?: input.displayName
+                ?: runCatching { URLDecoder.decode(uri.substringAfterLast('/'), Charsets.UTF_8) }.getOrDefault("book")
         return IncomingInput.File(uri, sanitizeDisplayName(name), input.mimeType ?: resolver?.getType(Uri.parse(uri)))
     }
 
-    private fun contentName(resolver: ContentResolver, uri: Uri): String? {
-        val cursor: Cursor = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?: return null
+    private fun contentName(
+        resolver: ContentResolver,
+        uri: Uri,
+    ): String? {
+        val cursor: Cursor =
+            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?: return null
         return cursor.use { if (it.moveToFirst()) it.getString(0) else null }
     }
 
@@ -97,20 +110,24 @@ class IncomingIntentParser(private val resolver: ContentResolver? = null) {
         private val unsafeName = Regex("[^A-Za-z0-9._() иА-Яа-яЁё-]")
 
         fun sanitizeDisplayName(value: String): String {
-            val cleaned = value
-                .replace(Regex("[\\r\\n\\u0000]"), " ")
-                .substringAfterLast('/')
-                .substringAfterLast('\\')
-                .replace(unsafeName, "_")
-                .trim('.', ' ')
+            val cleaned =
+                value
+                    .replace(Regex("[\\r\\n\\u0000]"), " ")
+                    .substringAfterLast('/')
+                    .substringAfterLast('\\')
+                    .replace(unsafeName, "_")
+                    .trim('.', ' ')
             return cleaned.take(240).ifBlank { "book" }
         }
 
-        fun isHttpUrl(value: String): Boolean = runCatching {
-            val uri = URI(value)
-            (uri.scheme?.lowercase(Locale.ROOT) == "http" || uri.scheme?.lowercase(Locale.ROOT) == "https") &&
-                !uri.host.isNullOrBlank() && uri.userInfo == null && uri.fragment == null
-        }.getOrDefault(false)
+        fun isHttpUrl(value: String): Boolean =
+            runCatching {
+                val uri = URI(value)
+                (uri.scheme?.lowercase(Locale.ROOT) == "http" || uri.scheme?.lowercase(Locale.ROOT) == "https") &&
+                    !uri.host.isNullOrBlank() &&
+                    uri.userInfo == null &&
+                    uri.fragment == null
+            }.getOrDefault(false)
 
         fun urlFilename(value: String): String {
             val path = runCatching { URI(value).path }.getOrNull().orEmpty()
@@ -129,11 +146,12 @@ class IncomingIntentParser(private val resolver: ContentResolver? = null) {
         private fun isLocalUri(uri: String): Boolean =
             runCatching { URI(uri).scheme?.lowercase(Locale.ROOT) }.getOrNull() in setOf("content", "file")
     }
-
 }
 
 private fun Intent.getParcelableExtraCompat(name: String): Uri? =
-    if (android.os.Build.VERSION.SDK_INT >= 33) getParcelableExtra(name, Uri::class.java) else {
+    if (android.os.Build.VERSION.SDK_INT >= 33) {
+        getParcelableExtra(name, Uri::class.java)
+    } else {
         @Suppress("DEPRECATION")
         getParcelableExtra(name)
     }

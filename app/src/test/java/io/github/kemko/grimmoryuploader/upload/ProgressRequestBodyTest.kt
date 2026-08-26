@@ -1,10 +1,10 @@
 package io.github.kemko.grimmoryuploader.upload
 
-import java.util.concurrent.atomic.AtomicLong
 import okhttp3.RequestBody.Companion.toRequestBody
 import okio.Buffer
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.util.concurrent.atomic.AtomicLong
 
 class ProgressRequestBodyTest {
     @Test

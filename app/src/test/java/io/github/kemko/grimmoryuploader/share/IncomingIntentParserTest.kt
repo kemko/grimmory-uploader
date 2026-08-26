@@ -12,7 +12,10 @@ class IncomingIntentParserTest {
 
     @Test
     fun parsesOneSharedFileAndOneUrl() {
-        val file = parser.parse(IncomingIntentData(Intent.ACTION_SEND, streamUri = "content://books/Bad%20Name.fb2", mimeType = "application/octet-stream")) as IncomingInput.File
+        val file =
+            parser.parse(
+                IncomingIntentData(Intent.ACTION_SEND, streamUri = "content://books/Bad%20Name.fb2", mimeType = "application/octet-stream"),
+            ) as IncomingInput.File
         assertEquals("Bad Name.fb2", file.displayName)
 
         val url = parser.parse(IncomingIntentData(Intent.ACTION_SEND, text = "https://example.test/books/book.epub")) as IncomingInput.Url

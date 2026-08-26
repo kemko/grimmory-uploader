@@ -15,7 +15,11 @@ class TransferScheduler(
     private val appContext = context.applicationContext
     private val scheduler = appContext.getSystemService(JobScheduler::class.java)
 
-    fun schedule(jobId: Long, estimatedUploadBytes: Long = JobInfo.NETWORK_BYTES_UNKNOWN.toLong(), estimatedDownloadBytes: Long = JobInfo.NETWORK_BYTES_UNKNOWN.toLong()): Int {
+    fun schedule(
+        jobId: Long,
+        estimatedUploadBytes: Long = JobInfo.NETWORK_BYTES_UNKNOWN.toLong(),
+        estimatedDownloadBytes: Long = JobInfo.NETWORK_BYTES_UNKNOWN.toLong(),
+    ): Int {
         val info = jobInfo(jobId, estimatedUploadBytes, estimatedDownloadBytes)
         clearNotification(jobId)
         val result = scheduler.schedule(info)
@@ -27,19 +31,22 @@ class TransferScheduler(
         if (scheduler.getPendingJob(stableJobId(jobId)) == null) schedule(jobId)
     }
 
-    fun jobInfo(jobId: Long, estimatedUploadBytes: Long = JobInfo.NETWORK_BYTES_UNKNOWN.toLong(), estimatedDownloadBytes: Long = JobInfo.NETWORK_BYTES_UNKNOWN.toLong()): JobInfo =
-        JobInfo.Builder(
-            stableJobId(jobId),
-            ComponentName(appContext, TransferJobService::class.java),
-        )
-            .setUserInitiated(true)
+    fun jobInfo(
+        jobId: Long,
+        estimatedUploadBytes: Long = JobInfo.NETWORK_BYTES_UNKNOWN.toLong(),
+        estimatedDownloadBytes: Long = JobInfo.NETWORK_BYTES_UNKNOWN.toLong(),
+    ): JobInfo =
+        JobInfo
+            .Builder(
+                stableJobId(jobId),
+                ComponentName(appContext, TransferJobService::class.java),
+            ).setUserInitiated(true)
             .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
             .setRequiresStorageNotLow(true)
             .setEstimatedNetworkBytes(
                 estimatedDownloadBytes.coerceAtLeast(JobInfo.NETWORK_BYTES_UNKNOWN.toLong()),
                 estimatedUploadBytes.coerceAtLeast(JobInfo.NETWORK_BYTES_UNKNOWN.toLong()),
-            )
-            .setBackoffCriteria(30_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
+            ).setBackoffCriteria(30_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
             .setPersisted(true)
             .setExtras(PersistableBundle().apply { putLong(EXTRA_JOB_ID, jobId) })
             .build()
@@ -75,6 +82,7 @@ class TransferScheduler(
         const val EXTRA_JOB_ID = "upload_job_id"
 
         fun stableJobId(jobId: Long): Int = (jobId xor (jobId ushr 32)).toInt().coerceAtLeast(1)
+
         fun lifecycleNotificationId(jobId: Long): Int = -stableJobId(jobId)
     }
 }

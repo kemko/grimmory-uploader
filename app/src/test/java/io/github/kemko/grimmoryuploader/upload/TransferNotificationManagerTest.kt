@@ -26,9 +26,23 @@ class TransferNotificationManagerTest {
         notifications.showSuccess(1, "book.fb2")
         notifications.showInputFailure("unsupported")
         val manager = shadowOf(context.getSystemService(NotificationManager::class.java))
-        assertEquals(0, manager.getNotification(1).actions.orEmpty().size)
+        assertEquals(
+            0,
+            manager
+                .getNotification(1)
+                .actions
+                .orEmpty()
+                .size,
+        )
         assertNotNull(manager.getNotification(Int.MAX_VALUE))
-        assertEquals(0, manager.getNotification(Int.MAX_VALUE).actions.orEmpty().size)
+        assertEquals(
+            0,
+            manager
+                .getNotification(Int.MAX_VALUE)
+                .actions
+                .orEmpty()
+                .size,
+        )
         notifications.showSuccess(Int.MAX_VALUE.toLong(), "large-id.fb2")
         assertNotNull(manager.getNotification(Int.MAX_VALUE - 1))
         assertNull(manager.getNotification(2))
@@ -48,7 +62,14 @@ class TransferNotificationManagerTest {
             assertFalse(notification.extras.getBoolean("android.progressIndeterminate"))
         }
         notifications.showFailure(20, "book.fb2", "server rejected upload")
-        assertEquals(0, manager.getNotification(20).actions.orEmpty().size)
+        assertEquals(
+            0,
+            manager
+                .getNotification(20)
+                .actions
+                .orEmpty()
+                .size,
+        )
         notifications.showAuthRequired(21, "book.fb2")
         assertEquals(listOf("Cancel", "Sign in"), manager.getNotification(21).actions.map { it.title.toString() })
         notifications.showCleartextConfirmation(22, "book.fb2")

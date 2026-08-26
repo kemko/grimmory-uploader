@@ -1,20 +1,24 @@
 package io.github.kemko.grimmoryuploader.format
 
+import org.xml.sax.Attributes
+import org.xml.sax.helpers.DefaultHandler
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
 import java.util.zip.CRC32
-import java.util.zip.ZipFile
 import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 import javax.xml.XMLConstants
 import javax.xml.parsers.SAXParserFactory
-import org.xml.sax.Attributes
-import org.xml.sax.helpers.DefaultHandler
 
 class BookFormatDetector {
-    fun detect(file: File, hint: String? = null, cancelled: () -> Boolean = { false }): BookFormat {
+    fun detect(
+        file: File,
+        hint: String? = null,
+        cancelled: () -> Boolean = { false },
+    ): BookFormat {
         require(file.isFile) { "Book source does not exist" }
         file.inputStream().use { input ->
             val prefix = input.readNBytes(16)
@@ -25,7 +29,11 @@ class BookFormatDetector {
         }
     }
 
-    fun detect(input: InputStream, hint: String? = null, cancelled: () -> Boolean = { false }): BookFormat {
+    fun detect(
+        input: InputStream,
+        hint: String? = null,
+        cancelled: () -> Boolean = { false },
+    ): BookFormat {
         val checked = CancellableInputStream(input, cancelled)
         val buffered = BufferedInputStream(checked)
         buffered.mark(16)
@@ -37,7 +45,10 @@ class BookFormatDetector {
         return detectXml(buffered)
     }
 
-    private fun detectZip(file: File, cancelled: () -> Boolean): BookFormat {
+    private fun detectZip(
+        file: File,
+        cancelled: () -> Boolean,
+    ): BookFormat {
         ZipGuards.validateArchiveMetadata(file)
         return ZipFile(file).use { zip ->
             var total = 0L
@@ -65,7 +76,8 @@ class BookFormatDetector {
                     ZipGuards.validateActualEntry(entry, entry.compressedSize, counter.count, total)
                     require(entry.crc < 0 || entry.crc == counter.crc) { "ZIP entry checksum is invalid" }
                     if (
-                        firstEntry && entry.name == "mimetype" &&
+                        firstEntry &&
+                        entry.name == "mimetype" &&
                         content?.toString(StandardCharsets.UTF_8)?.trim() == "application/epub+zip" &&
                         entry.method == ZipEntry.STORED
                     ) {
@@ -83,7 +95,10 @@ class BookFormatDetector {
         }
     }
 
-    private fun detectZipStream(input: InputStream, cancelled: () -> Boolean): BookFormat {
+    private fun detectZipStream(
+        input: InputStream,
+        cancelled: () -> Boolean,
+    ): BookFormat {
         var entries = 0
         var total = 0L
         var fb2Count = 0
@@ -107,7 +122,13 @@ class BookFormatDetector {
                 val entryBytes = counter.count
                 total = Math.addExact(total, entryBytes)
                 ZipGuards.validateActualEntry(entry, entry.compressedSize, entryBytes, total)
-                if (firstEntry && entry.name == "mimetype" && content?.toString(StandardCharsets.UTF_8)?.trim() == "application/epub+zip" && entry.method == ZipEntry.STORED) epub = true
+                if (firstEntry &&
+                    entry.name == "mimetype" &&
+                    content?.toString(StandardCharsets.UTF_8)?.trim() == "application/epub+zip" &&
+                    entry.method == ZipEntry.STORED
+                ) {
+                    epub = true
+                }
                 firstEntry = false
             }
         }
@@ -119,8 +140,10 @@ class BookFormatDetector {
         }
     }
 
-    private fun detectXml(file: File, cancelled: () -> Boolean): BookFormat =
-        file.inputStream().use { detectXml(CancellableInputStream(it, cancelled)) }
+    private fun detectXml(
+        file: File,
+        cancelled: () -> Boolean,
+    ): BookFormat = file.inputStream().use { detectXml(CancellableInputStream(it, cancelled)) }
 
     private fun detectXml(input: InputStream): BookFormat {
         require(isFictionBook(input)) { "XML root is not FictionBook" }
@@ -129,27 +152,37 @@ class BookFormatDetector {
 
     private fun isFictionBook(input: InputStream): Boolean {
         var root: String? = null
-        val factory = SAXParserFactory.newInstance().apply {
-            isNamespaceAware = true
-            setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-            setFeature("http://xml.org/sax/features/external-general-entities", false)
-            setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-            setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
-            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-        }
-        factory.newSAXParser().parse(input, object : DefaultHandler() {
-            override fun startElement(uri: String?, localName: String?, qName: String, attributes: Attributes?) {
-                if (root == null) root = (localName.orEmpty().ifBlank { qName }).substringAfter(':')
+        val factory =
+            SAXParserFactory.newInstance().apply {
+                isNamespaceAware = true
+                setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+                setFeature("http://xml.org/sax/features/external-general-entities", false)
+                setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+                setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
             }
-        })
+        factory.newSAXParser().parse(
+            input,
+            object : DefaultHandler() {
+                override fun startElement(
+                    uri: String?,
+                    localName: String?,
+                    qName: String,
+                    attributes: Attributes?,
+                ) {
+                    if (root == null) root = (localName.orEmpty().ifBlank { qName }).substringAfter(':')
+                }
+            },
+        )
         return root == "FictionBook"
     }
 
     private fun ByteArray.startsWith(value: ByteArray) = size >= value.size && value.indices.all { this[it] == value[it] }
 
-    private fun ByteArray.isDjvu(): Boolean = size >= 8 &&
-        String(this, 0, 8, StandardCharsets.US_ASCII) == "AT&TFORM" &&
-        String(this, 8.coerceAtMost(size), (size - 8).coerceAtLeast(0), StandardCharsets.US_ASCII).contains("DJVU")
+    private fun ByteArray.isDjvu(): Boolean =
+        size >= 8 &&
+            String(this, 0, 8, StandardCharsets.US_ASCII) == "AT&TFORM" &&
+            String(this, 8.coerceAtMost(size), (size - 8).coerceAtLeast(0), StandardCharsets.US_ASCII).contains("DJVU")
 
     companion object {
         private val PDF_SIGNATURE = "%PDF-".toByteArray(StandardCharsets.US_ASCII)
@@ -170,15 +203,20 @@ private class CountingInputStream(
         private set
     val crc: Long get() = checksum.value
 
-    override fun read(): Int = delegate.read().also {
-        if (it >= 0) {
-            count++
-            checksum.update(it)
-            require(count <= maxBytes) { "ZIP entry is too large" }
+    override fun read(): Int =
+        delegate.read().also {
+            if (it >= 0) {
+                count++
+                checksum.update(it)
+                require(count <= maxBytes) { "ZIP entry is too large" }
+            }
         }
-    }
 
-    override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+    override fun read(
+        buffer: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Int =
         delegate.read(buffer, offset, length).also {
             if (it > 0) {
                 count += it
@@ -197,7 +235,11 @@ private class CancellableInputStream(
         return delegate.read()
     }
 
-    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+    override fun read(
+        buffer: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Int {
         checkCancellation()
         return delegate.read(buffer, offset, length)
     }

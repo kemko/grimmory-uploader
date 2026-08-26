@@ -4,7 +4,9 @@ import io.github.kemko.grimmoryuploader.data.settings.AppSettings
 import io.github.kemko.grimmoryuploader.data.settings.AuthMode
 import io.github.kemko.grimmoryuploader.di.AppContainer
 
-class SettingsViewModel(private val container: AppContainer) {
+class SettingsViewModel(
+    private val container: AppContainer,
+) {
     suspend fun current(): AppSettings = container.settings.current()
 
     suspend fun save(
@@ -17,7 +19,10 @@ class SettingsViewModel(private val container: AppContainer) {
         confirmServerChange: Boolean = false,
     ): Boolean {
         val old = container.settings.current()
-        val normalizedNew = io.github.kemko.grimmoryuploader.data.network.ServerUrl.parse(serverUrl).normalized
+        val normalizedNew =
+            io.github.kemko.grimmoryuploader.data.network.ServerUrl
+                .parse(serverUrl)
+                .normalized
         require(libraryId > 0) { "libraryId must be positive" }
         require(pathId > 0) { "pathId must be positive" }
         check(!normalizedNew.startsWith("http://") || confirmCleartext) { "HTTP requires explicit confirmation" }

@@ -1,11 +1,11 @@
 package io.github.kemko.grimmoryuploader.upload
 
-import java.io.IOException
 import okhttp3.MediaType
 import okhttp3.RequestBody
 import okio.BufferedSink
 import okio.ForwardingSink
 import okio.buffer
+import java.io.IOException
 
 class ProgressRequestBody(
     private val delegate: RequestBody,
@@ -22,13 +22,17 @@ class ProgressRequestBody(
     override fun writeTo(sink: BufferedSink) {
         val total = contentLength()
         var written = 0L
-        val progressSink = object : ForwardingSink(sink) {
-            override fun write(source: okio.Buffer, byteCount: Long) {
-                super.write(source, byteCount)
-                written += byteCount
-                onProgress(written, total)
+        val progressSink =
+            object : ForwardingSink(sink) {
+                override fun write(
+                    source: okio.Buffer,
+                    byteCount: Long,
+                ) {
+                    super.write(source, byteCount)
+                    written += byteCount
+                    onProgress(written, total)
+                }
             }
-        }
         val buffered = progressSink.buffer()
         try {
             delegate.writeTo(buffered)

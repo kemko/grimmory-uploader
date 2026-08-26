@@ -5,8 +5,9 @@ import android.content.Intent
 import android.net.Uri
 import io.github.kemko.grimmoryuploader.data.network.GrimmoryApi
 import io.github.kemko.grimmoryuploader.data.network.OidcCallbackRequest
-import net.openid.appauth.AuthorizationRequest
+import kotlinx.serialization.Serializable
 import net.openid.appauth.AuthorizationException
+import net.openid.appauth.AuthorizationRequest
 import net.openid.appauth.AuthorizationResponse
 import net.openid.appauth.AuthorizationService
 import net.openid.appauth.AuthorizationServiceConfiguration
@@ -15,7 +16,6 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
-import kotlinx.serialization.Serializable
 
 @Serializable
 data class OidcPendingRequest(
@@ -42,14 +42,17 @@ object Pkce {
 
     fun verifier(): String = randomBytes(32).let(::base64Url)
 
-    fun challenge(verifier: String): String = MessageDigest.getInstance("SHA-256")
-        .digest(verifier.encodeToByteArray()).let(::base64Url)
+    fun challenge(verifier: String): String =
+        MessageDigest
+            .getInstance("SHA-256")
+            .digest(verifier.encodeToByteArray())
+            .let(::base64Url)
 
     fun nonce(): String = randomBytes(24).let(::base64Url)
 
     private fun randomBytes(size: Int): ByteArray = ByteArray(size).also(random::nextBytes)
-    private fun base64Url(bytes: ByteArray): String =
-        Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+
+    private fun base64Url(bytes: ByteArray): String = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
 }
 
 class OidcCoordinator(
@@ -64,15 +67,17 @@ class OidcCoordinator(
 
     suspend fun start(): Intent {
         val serverUrl = auth.serverUrl()
-        val provider = api.publicSettings().oidcProviderDetails
-            ?: error("Grimmory did not return OIDC provider details")
+        val provider =
+            api.publicSettings().oidcProviderDetails
+                ?: error("Grimmory did not return OIDC provider details")
         val issuer = provider.issuerUri ?: error("OIDC issuer is missing")
         val clientId = provider.clientId ?: error("OIDC client id is missing")
         val scope = provider.scopes?.trim()?.takeIf(String::isNotEmpty) ?: DEFAULT_SCOPES
         require(scope.split(Regex("\\s+")).contains("openid")) { "OIDC scopes must include openid" }
         val discovery = api.oidcDiscovery(issuer)
-        val authorizationEndpoint = discovery.authorizationEndpoint
-            ?: error("OIDC authorization endpoint is missing")
+        val authorizationEndpoint =
+            discovery.authorizationEndpoint
+                ?: error("OIDC authorization endpoint is missing")
         val tokenEndpoint = discovery.tokenEndpoint ?: error("OIDC token endpoint is missing")
         requireSecureOidcUrl(authorizationEndpoint)
         requireSecureOidcUrl(tokenEndpoint)
@@ -96,20 +101,21 @@ class OidcCoordinator(
                 ),
             )
         }
-        val request = AuthorizationRequest.Builder(
-            AuthorizationServiceConfiguration(
-                Uri.parse(authorizationEndpoint),
-                Uri.parse(tokenEndpoint),
-            ),
-            clientId,
-            ResponseTypeValues.CODE,
-            Uri.parse(redirectUri),
-        )
-            .setScope(scope)
-            .setState(state)
-            .setCodeVerifier(verifier, challenge, "S256")
-            .setNonce(nonce)
-            .build()
+        val request =
+            AuthorizationRequest
+                .Builder(
+                    AuthorizationServiceConfiguration(
+                        Uri.parse(authorizationEndpoint),
+                        Uri.parse(tokenEndpoint),
+                    ),
+                    clientId,
+                    ResponseTypeValues.CODE,
+                    Uri.parse(redirectUri),
+                ).setScope(scope)
+                .setState(state)
+                .setCodeVerifier(verifier, challenge, "S256")
+                .setNonce(nonce)
+                .build()
         return authorizationService.value.getAuthorizationRequestIntent(request)
     }
 
@@ -136,7 +142,11 @@ class OidcCoordinator(
         )
     }
 
-    suspend fun handleCallback(state: String?, error: String?, code: String?) {
+    suspend fun handleCallback(
+        state: String?,
+        error: String?,
+        code: String?,
+    ) {
         val request = pendingStore.readPendingOidc() ?: kotlin.error("No pending OIDC request")
         check(state == request.state) { "OIDC state mismatch" }
         try {

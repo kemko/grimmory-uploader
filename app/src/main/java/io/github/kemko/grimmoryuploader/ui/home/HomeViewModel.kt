@@ -5,7 +5,9 @@ import io.github.kemko.grimmoryuploader.upload.db.UploadJobEntity
 import io.github.kemko.grimmoryuploader.upload.db.UploadJobState
 import kotlinx.coroutines.flow.Flow
 
-class HomeViewModel(private val container: AppContainer) {
+class HomeViewModel(
+    private val container: AppContainer,
+) {
     fun jobs(): Flow<List<UploadJobEntity>> = container.upload.observeAll()
 
     suspend fun retry(job: UploadJobEntity) {

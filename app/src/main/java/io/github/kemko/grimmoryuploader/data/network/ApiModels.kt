@@ -15,8 +15,14 @@ import kotlinx.serialization.Serializable
     val scopes: String? = null,
 )
 
-@Serializable data class LoginRequest(val username: String, val password: String)
-@Serializable data class RefreshRequest(val refreshToken: String)
+@Serializable data class LoginRequest(
+    val username: String,
+    val password: String,
+)
+
+@Serializable data class RefreshRequest(
+    val refreshToken: String,
+)
 
 @Serializable data class TokenResponse(
     @SerialName("accessToken") val accessToken: String,
@@ -30,7 +36,9 @@ import kotlinx.serialization.Serializable
     val email: String? = null,
 )
 
-@Serializable data class OidcStateResponse(val state: String? = null)
+@Serializable data class OidcStateResponse(
+    val state: String? = null,
+)
 
 @Serializable data class OidcDiscoveryResponse(
     @SerialName("authorization_endpoint") val authorizationEndpoint: String? = null,

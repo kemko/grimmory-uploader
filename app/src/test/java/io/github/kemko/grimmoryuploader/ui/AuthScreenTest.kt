@@ -8,8 +8,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import io.github.kemko.grimmoryuploader.data.auth.AesGcmTokenCipher
@@ -17,14 +17,14 @@ import io.github.kemko.grimmoryuploader.data.auth.AuthModeDecision
 import io.github.kemko.grimmoryuploader.data.settings.AuthMode
 import io.github.kemko.grimmoryuploader.di.AppContainer
 import io.github.kemko.grimmoryuploader.ui.auth.AuthViewModel
-import java.security.SecureRandom
-import javax.crypto.spec.SecretKeySpec
-import org.junit.Rule
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.security.SecureRandom
+import javax.crypto.spec.SecretKeySpec
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -35,9 +35,10 @@ class AuthScreenTest {
     @Test
     fun localPolicyHidesOidcAndRendersPasswordField() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val cipher = AesGcmTokenCipher(
-            SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
-        )
+        val cipher =
+            AesGcmTokenCipher(
+                SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
+            )
         val container = AppContainer(context, cipher)
         var settingsOpened = false
         compose.setContent {
@@ -65,9 +66,10 @@ class AuthScreenTest {
     @Test
     fun displaysOidcErrorPublishedAfterComposition() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val cipher = AesGcmTokenCipher(
-            SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
-        )
+        val cipher =
+            AesGcmTokenCipher(
+                SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
+            )
         val container = AppContainer(context, cipher)
         var error by mutableStateOf<String?>(null)
         compose.setContent {
