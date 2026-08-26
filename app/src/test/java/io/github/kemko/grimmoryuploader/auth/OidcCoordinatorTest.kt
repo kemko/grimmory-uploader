@@ -7,11 +7,17 @@ import io.github.kemko.grimmoryuploader.data.auth.AuthRepository
 import io.github.kemko.grimmoryuploader.data.auth.OidcCallbackException
 import io.github.kemko.grimmoryuploader.data.auth.OidcCallbackFailure
 import io.github.kemko.grimmoryuploader.data.auth.OidcCoordinator
+import io.github.kemko.grimmoryuploader.data.auth.OidcPendingStore
 import io.github.kemko.grimmoryuploader.data.auth.Pkce
+import io.github.kemko.grimmoryuploader.data.auth.TokenStore
 import io.github.kemko.grimmoryuploader.data.network.ApiException
 import io.github.kemko.grimmoryuploader.data.network.GrimmoryApi
 import io.github.kemko.grimmoryuploader.data.network.ServerUrl
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import net.openid.appauth.AuthorizationException
 import net.openid.appauth.AuthorizationRequest
 import net.openid.appauth.AuthorizationResponse
@@ -28,6 +34,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -337,6 +344,42 @@ class OidcCoordinatorTest {
         }
 
     @Test
+    fun cancelledExchangeClearsPendingRequest() =
+        runBlocking {
+            val server = MockWebServer()
+            server.start()
+            server.enqueueOidcStart("expected")
+            server.enqueue(
+                MockResponse()
+                    .setBody("""{"accessToken":"access","refreshToken":"refresh","expires":3600}""")
+                    .setHeadersDelay(30, TimeUnit.SECONDS),
+            )
+            try {
+                val store = CancellationCheckingStore()
+                val base = ServerUrl.parse(server.url("/").toString())
+                val api = GrimmoryApi(OkHttpClient(), serverUrl = { base })
+                val coordinator =
+                    OidcCoordinator(
+                        ContextWrapper(null),
+                        api,
+                        AuthRepository(api, store, currentServerUrl = { base.normalized }),
+                        store,
+                        authorizationIntentFactory = { Intent("test.oidc") },
+                    )
+                coordinator.start()
+                repeat(3) { server.takeRequest() }
+
+                val callback = launch(Dispatchers.IO) { coordinator.handleCallback("expected", null, "code") }
+                server.takeRequest()
+                callback.cancelAndJoin()
+
+                assertNull(store.readPendingOidc())
+            } finally {
+                server.shutdown()
+            }
+        }
+
+    @Test
     fun usesPublicProviderDetailsAndDiscovery() =
         runBlocking {
             val server = MockWebServer()
@@ -423,4 +466,14 @@ class OidcCoordinatorTest {
         store,
         authorizationIntentFactory = { Intent("test.oidc") },
     )
+
+    private class CancellationCheckingStore(
+        private val delegate: TestTokenStore = TestTokenStore(),
+    ) : TokenStore by delegate,
+        OidcPendingStore by delegate {
+        override suspend fun clearPendingOidc() {
+            yield()
+            delegate.clearPendingOidc()
+        }
+    }
 }

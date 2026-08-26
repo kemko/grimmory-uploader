@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import io.github.kemko.grimmoryuploader.data.network.GrimmoryApi
 import io.github.kemko.grimmoryuploader.data.network.OidcCallbackRequest
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import net.openid.appauth.AuthorizationException
 import net.openid.appauth.AuthorizationRequest
@@ -145,7 +147,7 @@ class OidcCoordinator(
 
     suspend fun handleAuthorizationResult(intent: Intent?) {
         if (intent == null) {
-            pendingStore.clearPendingOidc()
+            clearPendingOidc()
             throw OidcCallbackException(
                 failure = OidcCallbackFailure.CANCELLED,
                 message = "OIDC sign-in was cancelled",
@@ -157,7 +159,7 @@ class OidcCoordinator(
             response = AuthorizationResponse.fromIntent(intent)
             exception = AuthorizationException.fromIntent(intent)
         } catch (error: Exception) {
-            pendingStore.clearPendingOidc()
+            clearPendingOidc()
             throw appAuthFailure(error)
         }
 
@@ -238,12 +240,12 @@ class OidcCoordinator(
                 ),
             )
         } finally {
-            pendingStore.clearPendingOidc()
+            clearPendingOidc()
         }
     }
 
     private suspend fun failAppAuth(exception: AuthorizationException?): Nothing {
-        pendingStore.clearPendingOidc()
+        clearPendingOidc()
         throw appAuthFailure(exception)
     }
 
@@ -252,9 +254,14 @@ class OidcCoordinator(
         message: String,
         exception: AuthorizationException,
     ): Nothing {
-        pendingStore.clearPendingOidc()
+        clearPendingOidc()
         throw OidcCallbackException(failure = failure, message = message, cause = exception)
     }
+
+    private suspend fun clearPendingOidc() =
+        withContext(NonCancellable) {
+            pendingStore.clearPendingOidc()
+        }
 
     private fun appAuthFailure(
         cause: Throwable?,

@@ -177,8 +177,7 @@ class GrimmoryApi(
             if (source == ApiErrorSource.OIDC_PROVIDER) throw sourceFailure(source, error)
             throw error
         } catch (error: SerializationException) {
-            if (source == ApiErrorSource.OIDC_PROVIDER) throw sourceFailure(source, error)
-            throw error
+            throw sourceFailure(source, error)
         }
 
     private suspend fun executeSuccess(request: Request) {

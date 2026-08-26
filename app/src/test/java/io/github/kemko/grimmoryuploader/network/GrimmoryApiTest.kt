@@ -310,6 +310,30 @@ class GrimmoryApiTest {
         }
 
     @Test
+    fun preservesGrimmorySourceForSuccessfulDecodeFailures() =
+        runBlocking {
+            val server = MockWebServer()
+            server.enqueue(MockResponse().setBody("{"))
+            server.start()
+            try {
+                val api = GrimmoryApi(OkHttpClient(), serverUrl = { ServerUrl.parse(server.url("/").toString()) })
+
+                val error =
+                    assertThrows(ApiException::class.java) {
+                        runBlocking { api.oidcCallback(oidcCallbackRequest) }
+                    }
+                val presentation = AuthErrorPresenter.present(error)
+
+                assertEquals(ApiErrorSource.GRIMMORY, error.source)
+                assertNull(error.statusCode)
+                assertEquals("Grimmory request failed", error.message)
+                assertEquals(AuthErrorSource.GRIMMORY, presentation.source)
+            } finally {
+                server.shutdown()
+            }
+        }
+
+    @Test
     fun usesSafeFallbackForEmptyAndNonJsonBodies() =
         runBlocking {
             val server = MockWebServer()
