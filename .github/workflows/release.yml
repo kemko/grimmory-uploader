@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build-release:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+      - name: Use bundled JDK 25
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_25_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_25_X64/bin" >> "$GITHUB_PATH"
+      - name: Write signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/grimmory-release.keystore"
+          chmod 600 "$RUNNER_TEMP/grimmory-release.keystore"
+      - name: Build signed release APK
+        env:
+          ANDROID_SIGNING_STORE_FILE: ${{ runner.temp }}/grimmory-release.keystore
+          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+        run: gradle assembleRelease --no-daemon
+      - name: Checksum and attach APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          sha256sum app/build/outputs/apk/release/app-release.apk > app/build/outputs/apk/release/app-release.apk.sha256
+          gh release upload "$RELEASE_TAG" app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/app-release.apk.sha256 --clobber
+      - name: Remove signing keystore
+        if: ${{ always() }}
+        run: rm -f "$RUNNER_TEMP/grimmory-release.keystore"
