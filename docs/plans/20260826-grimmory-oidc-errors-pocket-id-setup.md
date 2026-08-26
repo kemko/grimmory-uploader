@@ -82,13 +82,13 @@
 - Modify: `README.md`
 - Modify: `CHANGELOG.md`
 
-- [ ] Ввести небольшой UI-модель ошибки: источник, краткое описание, действие пользователя и необязательный безопасный технический код.
-- [ ] Различать `OIDC provider`, `Grimmory`, `Grimmory → OIDC provider` и локальную ошибку приложения.
-- [ ] Для `invalid_client` показывать, что provider отклонил аутентификацию Grimmory, и предложить проверить Client ID, режим Public Client и пустой Client Secret.
-- [ ] Покрыть известные ошибки: `invalid_grant`, `access_denied`, provider unavailable, invalid token, OIDC disabled/misconfigured, invalid redirect URI/state и user not provisioned.
-- [ ] Для неизвестных ошибок показывать источник и HTTP status без необработанного JSON, HTML, URL token endpoint или длинного server body.
-- [ ] Использовать единое представление для local login, OIDC start и результата AppAuth; на AuthScreen явно вывести источник отдельно от описания.
-- [ ] Расширить README полным пайплайном:
+- [x] Ввести небольшой UI-модель ошибки: источник, краткое описание, действие пользователя и необязательный безопасный технический код.
+- [x] Различать `OIDC provider`, `Grimmory`, `Grimmory → OIDC provider` и локальную ошибку приложения.
+- [x] Для `invalid_client` показывать, что provider отклонил аутентификацию Grimmory, и предложить проверить Client ID, режим Public Client и пустой Client Secret.
+- [x] Покрыть известные ошибки: `invalid_grant`, `access_denied`, provider unavailable, invalid token, OIDC disabled/misconfigured, invalid redirect URI/state и user not provisioned.
+- [x] Для неизвестных ошибок показывать источник и HTTP status без необработанного JSON, HTML, URL token endpoint или длинного server body.
+- [x] Использовать единое представление для local login, OIDC start и результата AppAuth; на AuthScreen явно вывести источник отдельно от описания.
+- [x] Расширить README полным пайплайном:
   - создать в Pocket ID один public OIDC client с PKCE;
   - добавить web Redirect URI из Grimmory Provider Configuration Reference и точный `io.github.kemko.grimmoryuploader:/oauth2redirect`;
   - скопировать Client ID и Issuer URI;
@@ -98,9 +98,9 @@
   - описать последовательность app → provider → app → Grimmory → provider → Grimmory tokens;
   - добавить troubleshooting для `invalid_client`, redirect mismatch, provider reachability и user not provisioned;
   - отметить, что Test Connection не подтверждает корректность client authentication на реальном token exchange.
-- [ ] Добавить краткую запись об исправлении в `CHANGELOG.md`.
-- [ ] Добавить unit/UI-тесты точного `invalid_client`, известных Grimmory/provider ошибок, fallback и обновления ошибки после возврата из AppAuth.
-- [ ] Run `./gradlew :app:testDebugUnitTest --tests '*AuthErrorPresenterTest' --tests '*AuthScreenTest'`; тесты должны пройти до Task 4.
+- [x] Добавить краткую запись об исправлении в `CHANGELOG.md`.
+- [x] Добавить unit/UI-тесты точного `invalid_client`, известных Grimmory/provider ошибок, fallback и обновления ошибки после возврата из AppAuth.
+- [x] Run `./gradlew :app:testDebugUnitTest --tests '*AuthErrorPresenterTest' --tests '*AuthScreenTest'`; тесты должны пройти до Task 4.
 
 ### Task 4: Verify acceptance criteria
 

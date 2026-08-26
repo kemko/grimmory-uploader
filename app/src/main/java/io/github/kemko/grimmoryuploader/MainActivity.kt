@@ -18,12 +18,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import io.github.kemko.grimmoryuploader.ui.AppNavHost
+import io.github.kemko.grimmoryuploader.ui.auth.AuthErrorPresentation
+import io.github.kemko.grimmoryuploader.ui.auth.AuthErrorPresenter
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private var launchIntent by mutableStateOf<Intent?>(null)
     private var notificationPermissionDenied by mutableStateOf(false)
-    private var oidcError by mutableStateOf<String?>(null)
+    private var oidcError by mutableStateOf<AuthErrorPresentation?>(null)
     private val notificationPermission =
         registerForActivityResult(
             ActivityResultContracts.RequestPermission(),
@@ -42,7 +44,7 @@ class MainActivity : ComponentActivity() {
                         oidcError = null
                         recreate()
                     },
-                    onFailure = { oidcError = it.message ?: "OIDC sign-in failed" },
+                    onFailure = { oidcError = AuthErrorPresenter.present(it) },
                 )
             }
         }

@@ -47,6 +47,26 @@ io.github.kemko.grimmoryuploader:/oauth2redirect
 
 The redirect URI registered in the server and IdP must exactly match the URI used by the server's OIDC configuration.
 
+### Pocket ID and Grimmory setup
+
+Use one Pocket ID OIDC client for Grimmory web login and this app:
+
+1. In Pocket ID, create an OIDC client with PKCE and turn on Public Client. Add the web Redirect URI shown in Grimmory's OIDC Provider Configuration Reference (for example, `https://books.example.com/oauth2-callback`) and the exact mobile URI `io.github.kemko.grimmoryuploader:/oauth2redirect`. Do not use a wildcard.
+2. Copy the Pocket ID Client ID and Issuer URI.
+3. In Grimmory Settings > OIDC, paste the Client ID, leave Client Secret empty, and configure scopes containing `openid profile email groups offline_access`. Run Test Connection, save, and enable OIDC Login.
+4. In Grimmory's Allowed Mobile Redirect URIs, add `io.github.kemko.grimmoryuploader:/oauth2redirect` exactly, without a wildcard.
+5. Enable OIDC auto-provisioning or create the Grimmory user before signing in.
+
+The mobile flow is app → Pocket ID → app → Grimmory → Pocket ID → Grimmory tokens. The app starts authorization with PKCE; Grimmory performs the code exchange and returns its tokens. Test Connection confirms that Grimmory can reach the provider, but does not confirm client authentication during the real token exchange.
+
+Troubleshooting:
+
+- `invalid_client`: copy the Client ID again, enable Public Client in Pocket ID, and leave Client Secret empty in Grimmory.
+- Redirect mismatch: copy Grimmory's web Redirect URI from Provider Configuration Reference and compare both callback URIs character by character; the mobile URI must be `io.github.kemko.grimmoryuploader:/oauth2redirect`.
+- Provider unreachable: make the Pocket ID Issuer URI reachable from the Grimmory server/container, including DNS and firewall access.
+- User not provisioned: enable auto-provisioning or create a Grimmory user with the matching Pocket ID username.
+- OIDC disabled or misconfigured: enable OIDC Login and check the Issuer URI, Client ID, scopes, and callback allowlist.
+
 ## Send a book
 
 Use Share for one local file or one plain-text HTTP(S) URL. Use Open with for one local `content://` or `file://` book. The app does not accept multiple files, does not intercept ordinary web navigation, and does not accept DJVU.
