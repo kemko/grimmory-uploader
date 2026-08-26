@@ -182,6 +182,7 @@ class OidcCoordinatorTest {
                         .setAuthorizationCode("appauth-code")
                         .build()
 
+                assertEquals("io.github.kemko.grimmoryuploader:/oauth2redirect", request.redirectUri.toString())
                 coordinator.handleAuthorizationResult(response.toIntent())
 
                 repeat(3) { server.takeRequest() }

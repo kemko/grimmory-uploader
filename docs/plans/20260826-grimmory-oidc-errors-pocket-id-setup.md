@@ -104,17 +104,17 @@
 
 ### Task 4: Verify acceptance criteria
 
-- [ ] Проверить тестом, что наблюдаемый ответ с `invalid_client` отображается как отказ OIDC provider при аутентификации Grimmory.
-- [ ] Проверить тестом, что `access_denied` и отмена больше не отображаются как state mismatch.
-- [ ] Проверить тестом, что собственные ошибки redirect/state/provisioning обозначаются как ошибки Grimmory.
-- [ ] Проверить точное совпадение callback URI в коде, тестах и README.
-- [ ] Run `make format-check`.
-- [ ] Run `make lint`.
-- [ ] Run `make test`.
-- [ ] Run `make coverage` and verify coverage remains at least 80%.
-- [ ] Run `make security`.
-- [ ] Run `make build`.
-- [ ] Run `make ci`.
+- [x] Проверить тестом, что наблюдаемый ответ с `invalid_client` отображается как отказ OIDC provider при аутентификации Grimmory.
+- [x] Проверить тестом, что `access_denied` и отмена больше не отображаются как state mismatch.
+- [x] Проверить тестом, что собственные ошибки redirect/state/provisioning обозначаются как ошибки Grimmory.
+- [x] Проверить точное совпадение callback URI в коде, тестах и README.
+- [x] Run `make format-check`.
+- [x] Run `make lint`.
+- [x] Run `make test`.
+- [x] Run `make coverage` and verify coverage remains at least 80%.
+- [x] Run `make security`.
+- [x] Run `make build`.
+- [x] Run `make ci`.
 
 ## Post-Completion
 
