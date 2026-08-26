@@ -49,13 +49,13 @@
 
 ### Task 2: Verify acceptance criteria
 
-- [ ] Запустить `make format-check`.
-- [ ] Запустить `make lint`.
-- [ ] Запустить `make test`.
-- [ ] Запустить `make security`.
-- [ ] Запустить `make coverage` и подтвердить минимум 80% line coverage.
-- [ ] Запустить `make build`.
-- [ ] Запустить `make ci`; все проверки должны пройти, а `testDebugUnitTest` должен реально выполниться.
+- [x] Запустить `make format-check`.
+- [x] Запустить `make lint`.
+- [x] Запустить `make test`.
+- [x] Запустить `make security`.
+- [x] Запустить `make coverage` и подтвердить минимум 80% line coverage.
+- [x] Запустить `make build`.
+- [x] Запустить `make ci`; все проверки должны пройти, а `testDebugUnitTest` должен реально выполниться.
 
 ### Task 3: Update documentation
 
