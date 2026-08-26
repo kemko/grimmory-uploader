@@ -20,7 +20,9 @@ jobs:
           cache: gradle
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       - name: Install actionlint
-        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Run CI gate
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
