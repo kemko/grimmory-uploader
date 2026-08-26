@@ -1,8 +1,16 @@
 name: Release
 
 on:
-  push:
-    branches: [master]
+  workflow_call:
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: true
+      ANDROID_SIGNING_STORE_PASSWORD:
+        required: true
+      ANDROID_SIGNING_KEY_ALIAS:
+        required: true
+      ANDROID_SIGNING_KEY_PASSWORD:
+        required: true
 
 permissions:
   contents: read
@@ -12,6 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      issues: write
       pull-requests: write
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
