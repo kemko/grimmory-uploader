@@ -21,7 +21,7 @@ Available Make targets are:
 - `bootstrap-check`: verify Java, actionlint, and the Gradle toolchain.
 - `format` / `format-check`: format or check Kotlin and Gradle scripts.
 - `lint`: run Android Lint and actionlint.
-- `test`: run debug unit tests.
+- `test`: run debug unit tests on every invocation (`--rerun`).
 - `coverage`: generate and verify Kover coverage.
 - `security`: scan release runtime dependencies with OWASP Dependency-Check.
 - `build`: assemble the debug APK.
@@ -106,6 +106,6 @@ Settings control the normalized server URL, authentication mode (`AUTO`, `LOCAL`
 
 ## CI and releases
 
-CI runs on pull requests and pushes to `master` with JDK 26 and Android SDK 37.1. It executes `make ci`, refreshes the Dependency-Check database, and stores reports and the debug APK as workflow artifacts. Use short Conventional Commits such as `feat: add upload retry` or `fix: reject unsafe ZIP path`; Release Please uses these commits to propose releases and updates `version.properties`. The version is stable SemVer, and Android `versionCode` is derived deterministically from it.
+CI runs on pull requests and pushes to `master` with bundled JDK 25 and Android SDK 37.1. It executes `make ci`, including a forced debug unit-test run on every invocation, refreshes the Dependency-Check database, and stores reports and the debug APK as workflow artifacts. Local macOS development uses JDK 26. Use short Conventional Commits such as `feat: add upload retry` or `fix: reject unsafe ZIP path`; Release Please uses these commits to propose releases and updates `version.properties`. The version is stable SemVer, and Android `versionCode` is derived deterministically from it.
 
 Release Please runs on pushes to `master`. When it creates a GitHub Release, the same workflow builds and uploads a signed APK and its SHA-256 file. Configure these GitHub Actions secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_SIGNING_KEY_ALIAS`, `ANDROID_SIGNING_STORE_PASSWORD`, and `ANDROID_SIGNING_KEY_PASSWORD`. The workflow writes the decoded keystore only to runner temporary storage and removes it in an `always()` step; signing values are not printed.
