@@ -114,7 +114,7 @@ object AuthErrorPresenter {
                             "${source.label} returned an authentication error."
                         },
                     action = "Check the configuration and connection, then try again.",
-                    technicalCode = technicalCode,
+                    technicalCode = technicalCode(error.statusCode, null),
                 )
             }
         }
@@ -175,7 +175,6 @@ object AuthErrorPresenter {
                     source = AuthErrorSource.OIDC_PROVIDER,
                     description = "The OIDC provider rejected sign-in.",
                     action = "Check the provider configuration and try again.",
-                    technicalCode = code,
                 )
         }
     }

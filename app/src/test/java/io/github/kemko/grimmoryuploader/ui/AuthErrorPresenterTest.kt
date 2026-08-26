@@ -95,6 +95,7 @@ class AuthErrorPresenterTest {
                     statusCode = 503,
                     message = "<html>https://issuer.example/token secret=do-not-show</html>",
                     source = ApiErrorSource.OIDC_PROVIDER,
+                    errorCode = "secretToken123",
                 ),
             )
 
@@ -103,6 +104,22 @@ class AuthErrorPresenterTest {
         assertEquals("HTTP 503", error.technicalCode)
         assertFalse(error.description.contains("issuer.example"))
         assertFalse(error.action.contains("token"))
+    }
+
+    @Test
+    fun unknownProviderCallbackCodeIsNotExposed() {
+        val error =
+            AuthErrorPresenter.present(
+                OidcCallbackException(
+                    failure = OidcCallbackFailure.PROVIDER_ERROR,
+                    errorCode = "secretToken123",
+                    message = "provider error",
+                ),
+            )
+
+        assertEquals(AuthErrorSource.OIDC_PROVIDER, error.source)
+        assertEquals("The OIDC provider rejected sign-in.", error.description)
+        assertNull(error.technicalCode)
     }
 
     @Test
