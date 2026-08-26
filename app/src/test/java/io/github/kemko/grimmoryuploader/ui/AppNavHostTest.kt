@@ -12,7 +12,7 @@ import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.core.app.ApplicationProvider
@@ -26,7 +26,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.runner.Description
 import org.junit.runner.RunWith
+import org.junit.rules.RuleChain
+import org.junit.rules.TestRule
+import org.junit.runners.model.Statement
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowContentResolver
@@ -38,10 +42,32 @@ import javax.crypto.spec.SecretKeySpec
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class AppNavHostTest {
+    private val databaseCleanup =
+        object : TestRule {
+            override fun apply(
+                base: Statement,
+                description: Description,
+            ): Statement =
+                object : Statement() {
+                    override fun evaluate() {
+                        try {
+                            base.evaluate()
+                        } finally {
+                            if (::container.isInitialized) {
+                                container.database.close()
+                            }
+                        }
+                    }
+                }
+        }
+
+    private val compose = createComposeRule()
+
     @get:Rule
-    val compose = createComposeRule()
+    val rules: TestRule = RuleChain.outerRule(databaseCleanup).around(compose)
 
     private lateinit var context: Context
+    private lateinit var container: AppContainer
 
     @Before
     fun cleanStorage() {
@@ -51,15 +77,15 @@ class AppNavHostTest {
         File(context.noBackupFilesDir, "pending").deleteRecursively()
         File(context.noBackupFilesDir, "auth.tokens").delete()
         File(context.noBackupFilesDir, "auth.oidc").delete()
-    }
-
-    @Test
-    fun incomingFirstLaunchStagesBeforeOnboardingAndConsumesIntent() {
         val cipher =
             AesGcmTokenCipher(
                 SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
             )
-        val container = AppContainer(context, cipher)
+        container = AppContainer(context, cipher)
+    }
+
+    @Test
+    fun incomingFirstLaunchStagesBeforeOnboardingAndConsumesIntent() {
         val source =
             File(context.cacheDir, "incoming.fb2").apply {
                 writeText("<?xml version=\"1.0\"?><FictionBook/>")
@@ -87,16 +113,10 @@ class AppNavHostTest {
         assertNotNull(pending)
         assertTrue(File(requireNotNull(pending?.stagedPath)).isFile)
         assertTrue(consumed)
-        container.database.close()
     }
 
     @Test
     fun contentProviderMetadataIsReadOffMainThread() {
-        val cipher =
-            AesGcmTokenCipher(
-                SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
-            )
-        val container = AppContainer(context, cipher)
         val source =
             File(context.cacheDir, "provider.fb2").apply {
                 writeText("<?xml version=\"1.0\"?><FictionBook/>")
@@ -125,16 +145,10 @@ class AppNavHostTest {
         }
         assertTrue(provider.queryOffMain.get())
         assertTrue(provider.typeOffMain.get())
-        container.database.close()
     }
 
     @Test
     fun incomingWaitsForStartupReconciliationBeforeStaging() {
-        val cipher =
-            AesGcmTokenCipher(
-                SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
-            )
-        val container = AppContainer(context, cipher)
         val source =
             File(context.cacheDir, "startup.fb2").apply {
                 writeText("<?xml version=\"1.0\"?><FictionBook/>")
@@ -160,7 +174,6 @@ class AppNavHostTest {
             compose.onAllNodesWithText("Connect Grimmory").fetchSemanticsNodes().isNotEmpty()
         }
         assertNotNull(runBlocking { container.upload.pendingIntake() })
-        container.database.close()
     }
 
     private class BookProvider(

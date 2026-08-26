@@ -29,7 +29,7 @@ lint:
 	actionlint .github/workflows/*.yml
 
 test:
-	$(GRADLEW) testDebugUnitTest
+	$(GRADLEW) testDebugUnitTest --rerun
 
 coverage:
 	$(GRADLEW) koverXmlReportDebug koverVerifyDebug
