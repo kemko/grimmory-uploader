@@ -13,6 +13,8 @@ import io.github.kemko.grimmoryuploader.data.auth.TokenStore
 import io.github.kemko.grimmoryuploader.data.network.ApiException
 import io.github.kemko.grimmoryuploader.data.network.GrimmoryApi
 import io.github.kemko.grimmoryuploader.data.network.ServerUrl
+import io.github.kemko.grimmoryuploader.ui.auth.AuthErrorPresenter
+import io.github.kemko.grimmoryuploader.ui.auth.AuthErrorSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
@@ -403,6 +405,41 @@ class OidcCoordinatorTest {
                 assertEquals(server.url("/authorize").toString(), data.authorizationEndpoint)
                 assertEquals("openid profile email", data.scope)
                 assertEquals(3, server.requestCount)
+            } finally {
+                server.shutdown()
+            }
+        }
+
+    @Test
+    fun invalidProviderConfigurationIsAttributedToGrimmory() =
+        runBlocking {
+            val server = MockWebServer()
+            server.start()
+            val providerDetails =
+                listOf(
+                    """{"clientId":"mobile","issuerUri":" "}""",
+                    """{"clientId":"mobile","issuerUri":"not a URL"}""",
+                    """{"clientId":" ","issuerUri":"${server.url("/issuer")}"}""",
+                )
+            providerDetails.forEach {
+                server.enqueue(MockResponse().setBody("""{"oidcEnabled":true,"oidcProviderDetails":$it}"""))
+            }
+            try {
+                val base = ServerUrl.parse(server.url("/").toString())
+                val api = GrimmoryApi(OkHttpClient(), serverUrl = { base })
+                val coordinator = coordinator(api, TestTokenStore(), base)
+
+                repeat(providerDetails.size) {
+                    val exception =
+                        assertThrows(ApiException::class.java) {
+                            runBlocking { coordinator.start() }
+                        }
+                    val presentation = AuthErrorPresenter.present(exception)
+                    assertEquals("oidc_misconfigured", exception.errorCode)
+                    assertEquals(AuthErrorSource.GRIMMORY, presentation.source)
+                    assertEquals("OIDC is disabled or misconfigured in Grimmory.", presentation.description)
+                }
+                assertEquals(providerDetails.size, server.requestCount)
             } finally {
                 server.shutdown()
             }

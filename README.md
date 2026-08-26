@@ -55,7 +55,7 @@ Use one Pocket ID OIDC client for Grimmory web login and this app:
 
 1. In Pocket ID, create an OIDC client with PKCE and turn on Public Client. Add the web Redirect URI shown in Grimmory's OIDC Provider Configuration Reference (for example, `https://books.example.com/oauth2-callback`) and the exact mobile URI `io.github.kemko.grimmoryuploader:/oauth2redirect`. Do not use a wildcard.
 2. Copy the Pocket ID Client ID and Issuer URI.
-3. In Grimmory Settings > OIDC, paste the Client ID, leave Client Secret empty, and configure scopes containing `openid profile email groups offline_access`. Run Test Connection, save, and enable OIDC Login.
+3. In Grimmory Settings > OIDC, paste the Issuer URI and Client ID, leave Client Secret empty, and configure scopes containing `openid profile email groups offline_access`. Run Test Connection, save, and enable OIDC Login.
 4. In Grimmory's Allowed Mobile Redirect URIs, add `io.github.kemko.grimmoryuploader:/oauth2redirect` exactly, without a wildcard.
 5. Enable OIDC auto-provisioning or create the Grimmory user before signing in.
 

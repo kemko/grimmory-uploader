@@ -3,6 +3,7 @@ package io.github.kemko.grimmoryuploader.data.auth
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import io.github.kemko.grimmoryuploader.data.network.ApiException
 import io.github.kemko.grimmoryuploader.data.network.GrimmoryApi
 import io.github.kemko.grimmoryuploader.data.network.OidcCallbackRequest
 import kotlinx.coroutines.NonCancellable
@@ -87,11 +88,16 @@ class OidcCoordinator(
         val provider =
             api.publicSettings().oidcProviderDetails
                 ?: error("Grimmory did not return OIDC provider details")
-        val issuer = provider.issuerUri ?: error("OIDC issuer is missing")
-        val clientId = provider.clientId ?: error("OIDC client id is missing")
+        val issuer = provider.issuerUri?.trim()?.takeIf(String::isNotEmpty) ?: throw oidcConfigurationError()
+        val clientId = provider.clientId?.trim()?.takeIf(String::isNotEmpty) ?: throw oidcConfigurationError()
         val scope = provider.scopes?.trim()?.takeIf(String::isNotEmpty) ?: DEFAULT_SCOPES
         require(scope.split(Regex("\\s+")).contains("openid")) { "OIDC scopes must include openid" }
-        val discovery = api.oidcDiscovery(issuer)
+        val discovery =
+            try {
+                api.oidcDiscovery(issuer)
+            } catch (error: IllegalArgumentException) {
+                throw oidcConfigurationError(error)
+            }
         val authorizationEndpoint =
             discovery.authorizationEndpoint
                 ?: error("OIDC authorization endpoint is missing")
@@ -278,6 +284,14 @@ class OidcCoordinator(
             cause = cause,
         )
     }
+
+    private fun oidcConfigurationError(cause: Throwable? = null) =
+        ApiException(
+            statusCode = null,
+            message = "OIDC is disabled or misconfigured in Grimmory",
+            errorCode = "oidc_misconfigured",
+            cause = cause,
+        )
 
     fun close() {
         if (authorizationService.isInitialized()) authorizationService.value.dispose()
