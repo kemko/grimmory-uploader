@@ -8,6 +8,7 @@ import io.github.kemko.grimmoryuploader.data.auth.OidcCallbackException
 import io.github.kemko.grimmoryuploader.data.auth.OidcCallbackFailure
 import io.github.kemko.grimmoryuploader.data.auth.OidcCoordinator
 import io.github.kemko.grimmoryuploader.data.auth.Pkce
+import io.github.kemko.grimmoryuploader.data.network.ApiException
 import io.github.kemko.grimmoryuploader.data.network.GrimmoryApi
 import io.github.kemko.grimmoryuploader.data.network.ServerUrl
 import kotlinx.coroutines.runBlocking
@@ -152,6 +153,48 @@ class OidcCoordinatorTest {
         }
 
     @Test
+    fun appAuthCancellationAndStateMismatchKeepTheirFailureTypes() =
+        runBlocking {
+            val server = MockWebServer()
+            server.start()
+            try {
+                val store = TestTokenStore()
+                val base = ServerUrl.parse(server.url("/").toString())
+                val api = GrimmoryApi(OkHttpClient(), serverUrl = { base })
+                val coordinator = coordinator(api, store, base)
+
+                server.enqueueOidcStart("expected")
+                coordinator.start()
+                val cancellation =
+                    assertThrows(OidcCallbackException::class.java) {
+                        runBlocking {
+                            coordinator.handleAuthorizationResult(
+                                AuthorizationException.GeneralErrors.USER_CANCELED_AUTH_FLOW.toIntent(),
+                            )
+                        }
+                    }
+                assertEquals(OidcCallbackFailure.CANCELLED, cancellation.failure)
+                assertNull(store.readPendingOidc())
+
+                server.enqueueOidcStart("expected")
+                coordinator.start()
+                val mismatch =
+                    assertThrows(OidcCallbackException::class.java) {
+                        runBlocking {
+                            coordinator.handleAuthorizationResult(
+                                AuthorizationException.AuthorizationRequestErrors.STATE_MISMATCH.toIntent(),
+                            )
+                        }
+                    }
+                assertEquals(OidcCallbackFailure.STATE_MISMATCH, mismatch.failure)
+                assertNull(store.readPendingOidc())
+                assertEquals(6, server.requestCount)
+            } finally {
+                server.shutdown()
+            }
+        }
+
+    @Test
     fun appAuthSuccessUsesResponseStateAndCode() =
         runBlocking {
             val server = MockWebServer()
@@ -257,6 +300,37 @@ class OidcCoordinatorTest {
                 assertTrue(exception.failure != OidcCallbackFailure.STATE_MISMATCH)
                 assertNull(store.readPendingOidc())
                 assertEquals(3, server.requestCount)
+            } finally {
+                server.shutdown()
+            }
+        }
+
+    @Test
+    fun exchangeFailureClearsPendingRequestAndRejectsReplay() =
+        runBlocking {
+            val server = MockWebServer()
+            server.start()
+            server.enqueueOidcStart("expected")
+            server.enqueue(MockResponse().setResponseCode(502).setBody("""{"message":"OIDC callback failed"}"""))
+            try {
+                val store = TestTokenStore()
+                val base = ServerUrl.parse(server.url("/").toString())
+                val api = GrimmoryApi(OkHttpClient(), serverUrl = { base })
+                val coordinator = coordinator(api, store, base)
+                coordinator.start()
+
+                val exchangeFailure =
+                    assertThrows(ApiException::class.java) {
+                        runBlocking { coordinator.handleCallback("expected", null, "code") }
+                    }
+                assertEquals(502, exchangeFailure.statusCode)
+                assertNull(store.read())
+                assertNull(store.readPendingOidc())
+
+                assertThrows(OidcCallbackException::class.java) {
+                    runBlocking { coordinator.handleCallback("expected", null, "replay") }
+                }
+                assertEquals(4, server.requestCount)
             } finally {
                 server.shutdown()
             }

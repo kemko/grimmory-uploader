@@ -106,12 +106,23 @@ class AppNavHostTest {
         val intent =
             Intent(Intent.ACTION_VIEW)
                 .setData(Uri.parse("content://off-main-books/book"))
+        var consumed = false
 
         compose.setContent {
-            MaterialTheme { AppNavHost(container = container, launchIntent = intent) }
+            MaterialTheme {
+                AppNavHost(
+                    container = container,
+                    launchIntent = intent,
+                    onLaunchIntentConsumed = { consumed = true },
+                )
+            }
         }
 
-        compose.waitUntil(5_000) { provider.queryOffMain.get() && provider.typeOffMain.get() }
+        compose.waitUntil(5_000) {
+            provider.queryOffMain.get() &&
+                provider.typeOffMain.get() &&
+                consumed
+        }
         assertTrue(provider.queryOffMain.get())
         assertTrue(provider.typeOffMain.get())
         container.database.close()

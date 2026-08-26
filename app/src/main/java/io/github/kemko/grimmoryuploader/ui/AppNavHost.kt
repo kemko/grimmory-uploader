@@ -45,6 +45,7 @@ import io.github.kemko.grimmoryuploader.data.settings.AuthMode
 import io.github.kemko.grimmoryuploader.di.AppContainer
 import io.github.kemko.grimmoryuploader.share.IncomingIntentParser
 import io.github.kemko.grimmoryuploader.ui.auth.AuthErrorPresentation
+import io.github.kemko.grimmoryuploader.ui.auth.AuthErrorPresenter
 import io.github.kemko.grimmoryuploader.ui.auth.AuthViewModel
 import io.github.kemko.grimmoryuploader.ui.home.HomeViewModel
 import io.github.kemko.grimmoryuploader.ui.incoming.IncomingBookViewModel
@@ -333,7 +334,7 @@ fun AuthScreen(
                 Button(onClick = {
                     scope.launch {
                         if (modeDecision?.requiresUserChoice == true) viewModel.selectMode(AuthMode.LOCAL)
-                        viewModel.login(username, password).fold({ onAuthenticated() }, { message = viewModel.presentAuthError(it) })
+                        viewModel.login(username, password).fold({ onAuthenticated() }, { message = AuthErrorPresenter.present(it) })
                     }
                 }, modifier = Modifier.fillMaxWidth()) { Text("Sign in") }
             }
@@ -341,7 +342,7 @@ fun AuthScreen(
                 OutlinedButton(onClick = {
                     scope.launch {
                         if (modeDecision?.requiresUserChoice == true) viewModel.selectMode(AuthMode.OIDC)
-                        viewModel.startOidc().fold(launchOidc, { message = viewModel.presentAuthError(it) })
+                        viewModel.startOidc().fold(launchOidc, { message = AuthErrorPresenter.present(it) })
                     }
                 }, modifier = Modifier.fillMaxWidth()) { Text("Sign in with OIDC") }
             }

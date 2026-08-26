@@ -49,6 +49,8 @@ The redirect URI registered in the server and IdP must exactly match the URI use
 
 ### Pocket ID and Grimmory setup
 
+Mobile OIDC setup requires Grimmory 3.1.0 or later. Upgrade if Allowed Mobile Redirect URIs is unavailable.
+
 Use one Pocket ID OIDC client for Grimmory web login and this app:
 
 1. In Pocket ID, create an OIDC client with PKCE and turn on Public Client. Add the web Redirect URI shown in Grimmory's OIDC Provider Configuration Reference (for example, `https://books.example.com/oauth2-callback`) and the exact mobile URI `io.github.kemko.grimmoryuploader:/oauth2redirect`. Do not use a wildcard.

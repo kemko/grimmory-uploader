@@ -11,8 +11,6 @@ class AuthViewModel(
 ) {
     private val auth: AuthRepository = container.auth
 
-    fun presentAuthError(error: Throwable): AuthErrorPresentation = AuthErrorPresenter.present(error)
-
     suspend fun isAuthenticated(): Boolean = auth.isAuthenticated { container.api.currentUser() }
 
     suspend fun login(

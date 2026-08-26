@@ -1,5 +1,6 @@
 package io.github.kemko.grimmoryuploader.network
 
+import io.github.kemko.grimmoryuploader.data.network.ApiErrorSource
 import io.github.kemko.grimmoryuploader.data.network.ApiException
 import io.github.kemko.grimmoryuploader.data.network.GrimmoryApi
 import io.github.kemko.grimmoryuploader.data.network.ServerUrl
@@ -191,6 +192,43 @@ class GrimmoryApiTest {
                 assertEquals("Unknown client", error.message)
             } finally {
                 server.shutdown()
+            }
+        }
+
+    @Test
+    fun preservesProviderSourceForDiscoveryTransportAndDecodeFailures() =
+        runBlocking {
+            val unreachable = MockWebServer()
+            unreachable.start()
+            val unreachableIssuer = unreachable.url("/issuer").toString()
+            unreachable.shutdown()
+            val malformed = MockWebServer()
+            malformed.enqueue(MockResponse().setBody("{"))
+            malformed.start()
+            try {
+                val api =
+                    GrimmoryApi(
+                        OkHttpClient(),
+                        serverUrl = { ServerUrl.parse("https://grimmory.example") },
+                    )
+
+                val transport =
+                    assertThrows(ApiException::class.java) {
+                        runBlocking { api.oidcDiscovery(unreachableIssuer) }
+                    }
+                val decode =
+                    assertThrows(ApiException::class.java) {
+                        runBlocking { api.oidcDiscovery(malformed.url("/issuer").toString()) }
+                    }
+
+                assertEquals(ApiErrorSource.OIDC_PROVIDER, transport.source)
+                assertNull(transport.statusCode)
+                assertEquals("OIDC provider request failed", transport.message)
+                assertEquals(ApiErrorSource.OIDC_PROVIDER, decode.source)
+                assertNull(decode.statusCode)
+                assertEquals("OIDC provider request failed", decode.message)
+            } finally {
+                malformed.shutdown()
             }
         }
 

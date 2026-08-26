@@ -64,6 +64,7 @@ class AuthScreenTest {
         compose.onNodeWithText("Password").assertIsDisplayed()
         compose.onNodeWithText("Source: App").assertIsDisplayed()
         compose.onNodeWithText("OIDC sign-in was cancelled.").assertIsDisplayed()
+        compose.onNodeWithText("Start sign-in again when ready.").assertIsDisplayed()
         compose.onAllNodesWithText("Sign in").assertCountEquals(2)
         compose.onAllNodesWithText("Sign in with OIDC").assertCountEquals(0)
         compose.onNodeWithText("Settings").performClick()
@@ -105,6 +106,7 @@ class AuthScreenTest {
 
         compose.onNodeWithText("Source: OIDC provider").assertIsDisplayed()
         compose.onNodeWithText("OIDC callback failed.").assertIsDisplayed()
+        compose.onNodeWithText("Check the provider configuration and try again.").assertIsDisplayed()
         compose.onNodeWithText("Code: access_denied").assertIsDisplayed()
         container.database.close()
     }

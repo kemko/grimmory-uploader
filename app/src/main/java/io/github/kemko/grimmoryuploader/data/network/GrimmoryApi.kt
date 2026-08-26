@@ -1,5 +1,6 @@
 package io.github.kemko.grimmoryuploader.data.network
 
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -12,6 +13,7 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okio.Buffer
+import java.io.IOException
 
 enum class ApiErrorSource {
     GRIMMORY,
@@ -19,12 +21,13 @@ enum class ApiErrorSource {
 }
 
 class ApiException(
-    val statusCode: Int,
+    val statusCode: Int?,
     message: String,
     val source: ApiErrorSource = ApiErrorSource.GRIMMORY,
     val errorCode: String? = null,
     val errorDescription: String? = null,
-) : IllegalStateException(message)
+    cause: Throwable? = null,
+) : IllegalStateException(message, cause)
 
 class GrimmoryApi(
     client: OkHttpClient,
@@ -92,7 +95,6 @@ class GrimmoryApi(
                 .url(url)
                 .post(ByteArray(0).toRequestBody())
                 .build(),
-            source = ApiErrorSource.GRIMMORY,
         )
     }
 
@@ -149,7 +151,6 @@ class GrimmoryApi(
                 .url(serverUrl().endpoint(path))
                 .get()
                 .build(),
-            source = ApiErrorSource.GRIMMORY,
         )
 
     private suspend inline fun <reified T, reified B> post(
@@ -163,14 +164,22 @@ class GrimmoryApi(
                 .url(serverUrl().endpoint(path))
                 .post(requestBody)
                 .build(),
-            source = ApiErrorSource.GRIMMORY,
         )
     }
 
     private suspend inline fun <reified T> executeJson(
         request: Request,
         source: ApiErrorSource = ApiErrorSource.GRIMMORY,
-    ): T = json.decodeFromString(execute(request, source))
+    ): T =
+        try {
+            json.decodeFromString(execute(request, source))
+        } catch (error: IOException) {
+            if (source == ApiErrorSource.OIDC_PROVIDER) throw sourceFailure(source, error)
+            throw error
+        } catch (error: SerializationException) {
+            if (source == ApiErrorSource.OIDC_PROVIDER) throw sourceFailure(source, error)
+            throw error
+        }
 
     private suspend fun executeSuccess(request: Request) {
         execute(request, ApiErrorSource.GRIMMORY)
@@ -225,6 +234,17 @@ class GrimmoryApi(
             errorDescription = description,
         )
     }
+
+    private fun sourceFailure(
+        source: ApiErrorSource,
+        cause: Throwable,
+    ): ApiException =
+        ApiException(
+            statusCode = null,
+            message = "${source.label} request failed",
+            source = source,
+            cause = cause,
+        )
 
     private fun JsonElement.asOAuthError(): OAuthErrorResponse? =
         (this as? JsonObject)

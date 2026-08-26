@@ -104,7 +104,7 @@ object AuthErrorPresenter {
                     technicalCode = technicalCode,
                 )
             else -> {
-                val unavailable = error.statusCode >= 500
+                val unavailable = error.statusCode == null || error.statusCode >= 500
                 AuthErrorPresentation(
                     source = source,
                     description =
@@ -209,10 +209,11 @@ object AuthErrorPresenter {
     }
 
     private fun technicalCode(
-        statusCode: Int,
+        statusCode: Int?,
         errorCode: String?,
-    ): String =
-        buildString {
+    ): String? {
+        if (statusCode == null) return errorCode
+        return buildString {
             append("HTTP ")
             append(statusCode)
             errorCode?.let {
@@ -220,6 +221,7 @@ object AuthErrorPresenter {
                 append(it)
             }
         }
+    }
 
     private fun safeCode(value: String?): String? =
         value

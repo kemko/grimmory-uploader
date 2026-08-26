@@ -8,6 +8,7 @@ import io.github.kemko.grimmoryuploader.ui.auth.AuthErrorPresenter
 import io.github.kemko.grimmoryuploader.ui.auth.AuthErrorSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class AuthErrorPresenterTest {
@@ -52,8 +53,10 @@ class AuthErrorPresenterTest {
 
         assertEquals(AuthErrorSource.OIDC_PROVIDER, denied.source)
         assertEquals("Sign-in was denied by the OIDC provider.", denied.description)
+        assertEquals("Allow access in the provider, then try again.", denied.action)
         assertEquals(AuthErrorSource.GRIMMORY, provisioning.source)
         assertEquals("Grimmory has no account for this OIDC user.", provisioning.description)
+        assertEquals("Enable OIDC auto-provisioning or create the user in Grimmory, then try again.", provisioning.action)
     }
 
     @Test
@@ -123,5 +126,21 @@ class AuthErrorPresenterTest {
         assertEquals("The Android OIDC hand-off failed.", appAuth.description)
         assertFalse(cancelled.description.contains("state", ignoreCase = true))
         assertFalse(appAuth.description.contains("state", ignoreCase = true))
+    }
+
+    @Test
+    fun providerFailureWithoutHttpResponseKeepsItsSource() {
+        val error =
+            AuthErrorPresenter.present(
+                ApiException(
+                    statusCode = null,
+                    message = "OIDC provider request failed",
+                    source = ApiErrorSource.OIDC_PROVIDER,
+                ),
+            )
+
+        assertEquals(AuthErrorSource.OIDC_PROVIDER, error.source)
+        assertEquals("OIDC provider is unavailable.", error.description)
+        assertNull(error.technicalCode)
     }
 }

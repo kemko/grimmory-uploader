@@ -171,6 +171,18 @@ class OidcCoordinator(
                     errorDescription = exception.errorDescription ?: callback?.getQueryParameter("error_description"),
                     code = null,
                 )
+            exception.matches(AuthorizationException.GeneralErrors.USER_CANCELED_AUTH_FLOW) ->
+                failCallback(
+                    failure = OidcCallbackFailure.CANCELLED,
+                    message = "OIDC sign-in was cancelled",
+                    exception = requireNotNull(exception),
+                )
+            exception.matches(AuthorizationException.AuthorizationRequestErrors.STATE_MISMATCH) ->
+                failCallback(
+                    failure = OidcCallbackFailure.STATE_MISMATCH,
+                    message = "OIDC state mismatch",
+                    exception = requireNotNull(exception),
+                )
             exception != null -> failAppAuth(exception)
             callback?.getQueryParameter("error") != null ->
                 handleCallback(
@@ -235,6 +247,15 @@ class OidcCoordinator(
         throw appAuthFailure(exception)
     }
 
+    private suspend fun failCallback(
+        failure: OidcCallbackFailure,
+        message: String,
+        exception: AuthorizationException,
+    ): Nothing {
+        pendingStore.clearPendingOidc()
+        throw OidcCallbackException(failure = failure, message = message, cause = exception)
+    }
+
     private fun appAuthFailure(
         cause: Throwable?,
         fallbackMessage: String = "OIDC authorization failed in AppAuth",
@@ -268,6 +289,9 @@ class OidcCoordinator(
             ?.trim()
             ?.takeIf(String::isNotEmpty)
             ?.take(maxChars)
+
+    private fun AuthorizationException?.matches(template: AuthorizationException): Boolean =
+        this?.type == template.type && this.code == template.code
 
     private companion object {
         const val DEFAULT_SCOPES = "openid profile email groups offline_access"
