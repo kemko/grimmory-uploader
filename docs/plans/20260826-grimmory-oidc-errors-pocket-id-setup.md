@@ -61,13 +61,13 @@
 - Modify: `app/src/main/java/io/github/kemko/grimmoryuploader/data/auth/OidcCoordinator.kt`
 - Modify: `app/src/test/java/io/github/kemko/grimmoryuploader/auth/OidcCoordinatorTest.kt`
 
-- [ ] Разделить успешный callback, OAuth-ошибку provider, отмену, внутреннюю ошибку AppAuth и state mismatch.
-- [ ] Для OAuth error брать `state` из redirect URI в `Intent.data`, проверять его и сохранять отдельно `error` и `error_description`.
-- [ ] Не заменять отмену, отсутствие браузера и другие AppAuth general errors ложным `OIDC state mismatch`.
-- [ ] Очищать pending-запрос после всех терминальных результатов; при поддельном state не выполнять token exchange.
-- [ ] Сохранить привязку pending-запроса к Grimmory server URL и точную передачу `code`, verifier, redirect URI, nonce и state.
-- [ ] Добавить тесты успешного результата, `access_denied`, отмены, отсутствующего браузера, неверного state, replay и отсутствия вызова Grimmory при ошибке provider.
-- [ ] Run `./gradlew :app:testDebugUnitTest --tests '*OidcCoordinatorTest'`; тест должен пройти до Task 3.
+- [x] Разделить успешный callback, OAuth-ошибку provider, отмену, внутреннюю ошибку AppAuth и state mismatch.
+- [x] Для OAuth error брать `state` из redirect URI в `Intent.data`, проверять его и сохранять отдельно `error` и `error_description`.
+- [x] Не заменять отмену, отсутствие браузера и другие AppAuth general errors ложным `OIDC state mismatch`.
+- [x] Очищать pending-запрос после всех терминальных результатов; при поддельном state не выполнять token exchange.
+- [x] Сохранить привязку pending-запроса к Grimmory server URL и точную передачу `code`, verifier, redirect URI, nonce и state.
+- [x] Добавить тесты успешного результата, `access_denied`, отмены, отсутствующего браузера, неверного state, replay и отсутствия вызова Grimmory при ошибке provider.
+- [x] Run `./gradlew :app:testDebugUnitTest --tests '*OidcCoordinatorTest'`; тест должен пройти до Task 3.
 
 ### Task 3: Показывать источник и понятное описание ошибки
 

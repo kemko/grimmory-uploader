@@ -37,6 +37,21 @@ data class OidcAuthorizationData(
     val nonce: String,
 )
 
+enum class OidcCallbackFailure {
+    PROVIDER_ERROR,
+    CANCELLED,
+    APP_AUTH_ERROR,
+    STATE_MISMATCH,
+}
+
+class OidcCallbackException(
+    val failure: OidcCallbackFailure,
+    val errorCode: String? = null,
+    val errorDescription: String? = null,
+    message: String,
+    cause: Throwable? = null,
+) : IllegalStateException(message, cause)
+
 object Pkce {
     private val random = SecureRandom()
 
@@ -124,34 +139,82 @@ class OidcCoordinator(
             state = callback.getQueryParameter("state"),
             error = callback.getQueryParameter("error"),
             code = callback.getQueryParameter("code"),
+            errorDescription = callback.getQueryParameter("error_description"),
         )
     }
 
     suspend fun handleAuthorizationResult(intent: Intent?) {
         if (intent == null) {
             pendingStore.clearPendingOidc()
-            error("OIDC sign-in was cancelled")
+            throw OidcCallbackException(
+                failure = OidcCallbackFailure.CANCELLED,
+                message = "OIDC sign-in was cancelled",
+            )
         }
-        val data = intent
-        val response = AuthorizationResponse.fromIntent(data)
-        val exception = AuthorizationException.fromIntent(data)
-        handleCallback(
-            state = response?.state,
-            error = exception?.errorDescription ?: exception?.error,
-            code = response?.authorizationCode,
-        )
+        val response: AuthorizationResponse?
+        val exception: AuthorizationException?
+        try {
+            response = AuthorizationResponse.fromIntent(intent)
+            exception = AuthorizationException.fromIntent(intent)
+        } catch (error: Exception) {
+            pendingStore.clearPendingOidc()
+            throw appAuthFailure(error)
+        }
+
+        val callback = intent.data
+        val callbackState = callback?.getQueryParameter("state")
+        when {
+            exception?.type == AuthorizationException.TYPE_OAUTH_AUTHORIZATION_ERROR ->
+                handleCallback(
+                    state = callbackState,
+                    error = exception.error ?: callback?.getQueryParameter("error"),
+                    errorDescription = exception.errorDescription ?: callback?.getQueryParameter("error_description"),
+                    code = null,
+                )
+            exception != null -> failAppAuth(exception)
+            callback?.getQueryParameter("error") != null ->
+                handleCallback(
+                    state = callbackState,
+                    error = callback.getQueryParameter("error"),
+                    errorDescription = callback.getQueryParameter("error_description"),
+                    code = null,
+                )
+            response != null ->
+                handleCallback(
+                    state = response.state ?: callbackState,
+                    error = null,
+                    code = response.authorizationCode,
+                )
+            else -> failAppAuth(null)
+        }
     }
 
     suspend fun handleCallback(
         state: String?,
         error: String?,
         code: String?,
+        errorDescription: String? = null,
     ) {
-        val request = pendingStore.readPendingOidc() ?: kotlin.error("No pending OIDC request")
-        check(state == request.state) { "OIDC state mismatch" }
+        val request = pendingStore.readPendingOidc() ?: throw appAuthFailure(null, "No pending OIDC request")
         try {
-            check(error == null) { "OIDC authorization failed: $error" }
-            val authorizationCode = code ?: error("OIDC code is missing")
+            if (state != request.state) {
+                throw OidcCallbackException(
+                    failure = OidcCallbackFailure.STATE_MISMATCH,
+                    message = "OIDC state mismatch",
+                )
+            }
+            if (error != null) {
+                throw OidcCallbackException(
+                    failure = OidcCallbackFailure.PROVIDER_ERROR,
+                    errorCode = error.safeCallbackValue(MAX_ERROR_CODE_CHARS),
+                    errorDescription = errorDescription.safeCallbackValue(MAX_ERROR_DESCRIPTION_CHARS),
+                    message =
+                        errorDescription.safeCallbackValue(MAX_ERROR_DESCRIPTION_CHARS)
+                            ?: error.safeCallbackValue(MAX_ERROR_CODE_CHARS)
+                            ?: "OIDC authorization failed",
+                )
+            }
+            val authorizationCode = code ?: throw appAuthFailure(null, "OIDC authorization code is missing")
             auth.exchangeOidc(
                 request.serverUrl,
                 OidcCallbackRequest(
@@ -167,6 +230,27 @@ class OidcCoordinator(
         }
     }
 
+    private suspend fun failAppAuth(exception: AuthorizationException?): Nothing {
+        pendingStore.clearPendingOidc()
+        throw appAuthFailure(exception)
+    }
+
+    private fun appAuthFailure(
+        cause: Throwable?,
+        fallbackMessage: String = "OIDC authorization failed in AppAuth",
+    ): OidcCallbackException {
+        val exception = cause as? AuthorizationException
+        val description = exception?.errorDescription.safeCallbackValue(MAX_ERROR_DESCRIPTION_CHARS)
+        val code = exception?.error.safeCallbackValue(MAX_ERROR_CODE_CHARS)
+        return OidcCallbackException(
+            failure = OidcCallbackFailure.APP_AUTH_ERROR,
+            errorCode = code,
+            errorDescription = description,
+            message = description ?: code ?: fallbackMessage,
+            cause = cause,
+        )
+    }
+
     fun close() {
         if (authorizationService.isInitialized()) authorizationService.value.dispose()
     }
@@ -178,7 +262,16 @@ class OidcCoordinator(
         }
     }
 
+    private fun String?.safeCallbackValue(maxChars: Int): String? =
+        this
+            ?.replace(Regex("\\s+"), " ")
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?.take(maxChars)
+
     private companion object {
         const val DEFAULT_SCOPES = "openid profile email groups offline_access"
+        const val MAX_ERROR_CODE_CHARS = 128
+        const val MAX_ERROR_DESCRIPTION_CHARS = 512
     }
 }
