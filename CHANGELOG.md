@@ -2,6 +2,30 @@
 
 All notable changes to Grimmory Uploader are documented here.
 
+## [0.3.0](https://github.com/kemko/grimmory-uploader/compare/v0.2.0...v0.3.0) (2026-08-27)
+
+
+### Features
+
+* document local CI test gate ([d5a0536](https://github.com/kemko/grimmory-uploader/commit/d5a0536e7f988302b3437aab919a93c91a0668ac))
+* explain OIDC authentication errors ([64df446](https://github.com/kemko/grimmory-uploader/commit/64df446420c8b9e27daaf29e6b70ac903f835158))
+* fix OIDC callback errors ([ead421b](https://github.com/kemko/grimmory-uploader/commit/ead421b30ea67585082e89f86909f33758fee1b9))
+* improve OIDC diagnostics and test reliability ([bf10743](https://github.com/kemko/grimmory-uploader/commit/bf107439dff82c5310887c08a58ac66c153fafce))
+* stabilize AppNavHost test teardown ([ca221e1](https://github.com/kemko/grimmory-uploader/commit/ca221e11d47ce06c5d5fd1c4e9b503c9e3c210c6))
+* structure Grimmory OIDC errors ([b8227c0](https://github.com/kemko/grimmory-uploader/commit/b8227c0f31f45451318657420f46eaee51937f22))
+* verify local CI gates ([94ccc42](https://github.com/kemko/grimmory-uploader/commit/94ccc42e55f99f4a773facc4d1f2d43696771592))
+* verify OIDC error handling ([56154ba](https://github.com/kemko/grimmory-uploader/commit/56154ba77baa429aa5009aa6b5c255ec5f85ddbf))
+
+
+### Bug Fixes
+
+* address code review findings ([4f356a5](https://github.com/kemko/grimmory-uploader/commit/4f356a554f3074442e3a4d343daa96d60c4f5b90))
+* address code review findings ([c6c79ba](https://github.com/kemko/grimmory-uploader/commit/c6c79ba492fbdc949ba1d5f6300fa869dce9e601))
+* address code review findings ([837ae95](https://github.com/kemko/grimmory-uploader/commit/837ae953dc3e529378d1b4d08eaecb7c78ccc5e1))
+* address code review findings ([816b277](https://github.com/kemko/grimmory-uploader/commit/816b277fa6ee8c95cd154d6368091a7eec03fbd7))
+* address code review findings ([04bf0f4](https://github.com/kemko/grimmory-uploader/commit/04bf0f4c82f434d0364cd321bd448552c4050ff6))
+* address code review findings ([4a73e53](https://github.com/kemko/grimmory-uploader/commit/4a73e531a114ae54ba333e6c98cf33f5bf7bf42f))
+
 ## [0.2.0](https://github.com/kemko/grimmory-uploader/compare/v0.1.0...v0.2.0) (2026-08-26)
 
 
