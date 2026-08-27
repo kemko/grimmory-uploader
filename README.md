@@ -21,7 +21,7 @@ Available Make targets are:
 - `bootstrap-check`: verify Java, actionlint, and the Gradle toolchain.
 - `format` / `format-check`: format or check Kotlin and Gradle scripts.
 - `lint`: run Android Lint and actionlint.
-- `test`: run debug unit tests.
+- `test`: run debug unit tests on every invocation (`--rerun`).
 - `coverage`: generate and verify Kover coverage.
 - `security`: scan release runtime dependencies with OWASP Dependency-Check.
 - `build`: assemble the debug APK.
@@ -46,6 +46,28 @@ io.github.kemko.grimmoryuploader:/oauth2redirect
 ```
 
 The redirect URI registered in the server and IdP must exactly match the URI used by the server's OIDC configuration.
+
+### Pocket ID and Grimmory setup
+
+Mobile OIDC setup requires Grimmory 3.1.0 or later. Upgrade if Allowed Mobile Redirect URIs is unavailable.
+
+Use one Pocket ID OIDC client for Grimmory web login and this app:
+
+1. In Pocket ID, create an OIDC client with PKCE and turn on Public Client. Add the web Redirect URI shown in Grimmory's OIDC Provider Configuration Reference (for example, `https://books.example.com/oauth2-callback`) and the exact mobile URI `io.github.kemko.grimmoryuploader:/oauth2redirect`. Do not use a wildcard.
+2. Copy the Pocket ID Client ID and Issuer URI.
+3. In Grimmory Settings > OIDC, paste the Issuer URI and Client ID, leave Client Secret empty, and configure scopes containing `openid profile email groups offline_access`. Run Test Connection, save, and enable OIDC Login.
+4. In Grimmory's Allowed Mobile Redirect URIs, add `io.github.kemko.grimmoryuploader:/oauth2redirect` exactly, without a wildcard.
+5. Enable OIDC auto-provisioning or create the Grimmory user before signing in.
+
+The mobile flow is app → Pocket ID → app → Grimmory → Pocket ID → Grimmory tokens. The app starts authorization with PKCE; Grimmory performs the code exchange and returns its tokens. Test Connection confirms that Grimmory can reach the provider, but does not confirm client authentication during the real token exchange.
+
+Troubleshooting:
+
+- `invalid_client`: copy the Client ID again, enable Public Client in Pocket ID, and leave Client Secret empty in Grimmory.
+- Redirect mismatch: copy Grimmory's web Redirect URI from Provider Configuration Reference and compare both callback URIs character by character; the mobile URI must be `io.github.kemko.grimmoryuploader:/oauth2redirect`.
+- Provider unreachable: make the Pocket ID Issuer URI reachable from the Grimmory server/container, including DNS and firewall access.
+- User not provisioned: enable auto-provisioning or create a Grimmory user with the matching Pocket ID username.
+- OIDC disabled or misconfigured: enable OIDC Login and check the Issuer URI, Client ID, scopes, and callback allowlist.
 
 ## Send a book
 
@@ -84,6 +106,6 @@ Settings control the normalized server URL, authentication mode (`AUTO`, `LOCAL`
 
 ## CI and releases
 
-CI runs on pull requests and pushes to `master` with JDK 26 and Android SDK 37.1. It executes `make ci`, refreshes the Dependency-Check database, and stores reports and the debug APK as workflow artifacts. Use short Conventional Commits such as `feat: add upload retry` or `fix: reject unsafe ZIP path`; Release Please uses these commits to propose releases and updates `version.properties`. The version is stable SemVer, and Android `versionCode` is derived deterministically from it.
+CI runs on pull requests and pushes to `master` with bundled JDK 25 and Android SDK 37.1. It executes `make ci`, including a forced debug unit-test run on every invocation, refreshes the Dependency-Check database, and stores reports and the debug APK as workflow artifacts. Local macOS development uses JDK 26. Use short Conventional Commits such as `feat: add upload retry` or `fix: reject unsafe ZIP path`; Release Please uses these commits to propose releases and updates `version.properties`. The version is stable SemVer, and Android `versionCode` is derived deterministically from it.
 
 Release Please runs on pushes to `master`. When it creates a GitHub Release, the same workflow builds and uploads a signed APK and its SHA-256 file. Configure these GitHub Actions secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_SIGNING_KEY_ALIAS`, `ANDROID_SIGNING_STORE_PASSWORD`, and `ANDROID_SIGNING_KEY_PASSWORD`. The workflow writes the decoded keystore only to runner temporary storage and removes it in an `always()` step; signing values are not printed.

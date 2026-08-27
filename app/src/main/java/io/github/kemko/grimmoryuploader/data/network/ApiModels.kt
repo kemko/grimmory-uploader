@@ -52,3 +52,15 @@ import kotlinx.serialization.Serializable
     val codeVerifier: String,
     val nonce: String,
 )
+
+@Serializable data class GrimmoryErrorResponse(
+    val status: Int? = null,
+    val message: String? = null,
+    val timestamp: String? = null,
+    val details: List<String>? = null,
+)
+
+@Serializable data class OAuthErrorResponse(
+    val error: String? = null,
+    @SerialName("error_description") val errorDescription: String? = null,
+)

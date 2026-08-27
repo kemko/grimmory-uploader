@@ -115,7 +115,8 @@ class UploadPipeline(
             } catch (error: ApiException) {
                 when {
                     error.statusCode == 401 -> PipelineResult.AwaitingAuth()
-                    error.statusCode in 400..499 -> PipelineResult.Failed(error.message ?: "Server rejected upload")
+                    error.statusCode?.let { it in 400..499 } == true ->
+                        PipelineResult.Failed(error.message ?: "Server rejected upload")
                     else -> PipelineResult.Retry(error.message ?: "Server request failed")
                 }
             } catch (error: UnsupportedBookException) {

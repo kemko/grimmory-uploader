@@ -28,6 +28,7 @@ All notable changes to Grimmory Uploader are documented here.
 
 ## [Unreleased]
 
+- Added source-aware OIDC errors and Pocket ID setup guidance.
 - Added Android app foundation with Jetpack Compose and a single `app` module.
 - Added local and OIDC/PKCE authentication with encrypted Android Keystore tokens.
 - Added Share/Open with intake for FB2, FB2.ZIP, EPUB, PDF, and HTTP(S) links.

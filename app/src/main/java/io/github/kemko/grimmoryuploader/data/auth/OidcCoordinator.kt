@@ -3,8 +3,11 @@ package io.github.kemko.grimmoryuploader.data.auth
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import io.github.kemko.grimmoryuploader.data.network.ApiException
 import io.github.kemko.grimmoryuploader.data.network.GrimmoryApi
 import io.github.kemko.grimmoryuploader.data.network.OidcCallbackRequest
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import net.openid.appauth.AuthorizationException
 import net.openid.appauth.AuthorizationRequest
@@ -36,6 +39,21 @@ data class OidcAuthorizationData(
     val codeChallenge: String,
     val nonce: String,
 )
+
+enum class OidcCallbackFailure {
+    PROVIDER_ERROR,
+    CANCELLED,
+    APP_AUTH_ERROR,
+    STATE_MISMATCH,
+}
+
+class OidcCallbackException(
+    val failure: OidcCallbackFailure,
+    val errorCode: String? = null,
+    val errorDescription: String? = null,
+    message: String,
+    cause: Throwable? = null,
+) : IllegalStateException(message, cause)
 
 object Pkce {
     private val random = SecureRandom()
@@ -70,11 +88,16 @@ class OidcCoordinator(
         val provider =
             api.publicSettings().oidcProviderDetails
                 ?: error("Grimmory did not return OIDC provider details")
-        val issuer = provider.issuerUri ?: error("OIDC issuer is missing")
-        val clientId = provider.clientId ?: error("OIDC client id is missing")
+        val issuer = provider.issuerUri?.trim()?.takeIf(String::isNotEmpty) ?: throw oidcConfigurationError()
+        val clientId = provider.clientId?.trim()?.takeIf(String::isNotEmpty) ?: throw oidcConfigurationError()
         val scope = provider.scopes?.trim()?.takeIf(String::isNotEmpty) ?: DEFAULT_SCOPES
         require(scope.split(Regex("\\s+")).contains("openid")) { "OIDC scopes must include openid" }
-        val discovery = api.oidcDiscovery(issuer)
+        val discovery =
+            try {
+                api.oidcDiscovery(issuer)
+            } catch (error: IllegalArgumentException) {
+                throw oidcConfigurationError(error)
+            }
         val authorizationEndpoint =
             discovery.authorizationEndpoint
                 ?: error("OIDC authorization endpoint is missing")
@@ -124,34 +147,94 @@ class OidcCoordinator(
             state = callback.getQueryParameter("state"),
             error = callback.getQueryParameter("error"),
             code = callback.getQueryParameter("code"),
+            errorDescription = callback.getQueryParameter("error_description"),
         )
     }
 
     suspend fun handleAuthorizationResult(intent: Intent?) {
         if (intent == null) {
-            pendingStore.clearPendingOidc()
-            error("OIDC sign-in was cancelled")
+            clearPendingOidc()
+            throw OidcCallbackException(
+                failure = OidcCallbackFailure.CANCELLED,
+                message = "OIDC sign-in was cancelled",
+            )
         }
-        val data = intent
-        val response = AuthorizationResponse.fromIntent(data)
-        val exception = AuthorizationException.fromIntent(data)
-        handleCallback(
-            state = response?.state,
-            error = exception?.errorDescription ?: exception?.error,
-            code = response?.authorizationCode,
-        )
+        val response: AuthorizationResponse?
+        val exception: AuthorizationException?
+        try {
+            response = AuthorizationResponse.fromIntent(intent)
+            exception = AuthorizationException.fromIntent(intent)
+        } catch (error: Exception) {
+            clearPendingOidc()
+            throw appAuthFailure(error)
+        }
+
+        val callback = intent.data
+        val callbackState = callback?.getQueryParameter("state")
+        when {
+            exception?.type == AuthorizationException.TYPE_OAUTH_AUTHORIZATION_ERROR ->
+                handleCallback(
+                    state = callbackState,
+                    error = exception.error ?: callback?.getQueryParameter("error"),
+                    errorDescription = exception.errorDescription ?: callback?.getQueryParameter("error_description"),
+                    code = null,
+                )
+            exception.matches(AuthorizationException.GeneralErrors.USER_CANCELED_AUTH_FLOW) ->
+                failCallback(
+                    failure = OidcCallbackFailure.CANCELLED,
+                    message = "OIDC sign-in was cancelled",
+                    exception = requireNotNull(exception),
+                )
+            exception.matches(AuthorizationException.AuthorizationRequestErrors.STATE_MISMATCH) ->
+                failCallback(
+                    failure = OidcCallbackFailure.STATE_MISMATCH,
+                    message = "OIDC state mismatch",
+                    exception = requireNotNull(exception),
+                )
+            exception != null -> failAppAuth(exception)
+            callback?.getQueryParameter("error") != null ->
+                handleCallback(
+                    state = callbackState,
+                    error = callback.getQueryParameter("error"),
+                    errorDescription = callback.getQueryParameter("error_description"),
+                    code = null,
+                )
+            response != null ->
+                handleCallback(
+                    state = response.state ?: callbackState,
+                    error = null,
+                    code = response.authorizationCode,
+                )
+            else -> failAppAuth(null)
+        }
     }
 
     suspend fun handleCallback(
         state: String?,
         error: String?,
         code: String?,
+        errorDescription: String? = null,
     ) {
-        val request = pendingStore.readPendingOidc() ?: kotlin.error("No pending OIDC request")
-        check(state == request.state) { "OIDC state mismatch" }
+        val request = pendingStore.readPendingOidc() ?: throw appAuthFailure(null, "No pending OIDC request")
         try {
-            check(error == null) { "OIDC authorization failed: $error" }
-            val authorizationCode = code ?: error("OIDC code is missing")
+            if (state != request.state) {
+                throw OidcCallbackException(
+                    failure = OidcCallbackFailure.STATE_MISMATCH,
+                    message = "OIDC state mismatch",
+                )
+            }
+            if (error != null) {
+                throw OidcCallbackException(
+                    failure = OidcCallbackFailure.PROVIDER_ERROR,
+                    errorCode = error.safeCallbackValue(MAX_ERROR_CODE_CHARS),
+                    errorDescription = errorDescription.safeCallbackValue(MAX_ERROR_DESCRIPTION_CHARS),
+                    message =
+                        errorDescription.safeCallbackValue(MAX_ERROR_DESCRIPTION_CHARS)
+                            ?: error.safeCallbackValue(MAX_ERROR_CODE_CHARS)
+                            ?: "OIDC authorization failed",
+                )
+            }
+            val authorizationCode = code ?: throw appAuthFailure(null, "OIDC authorization code is missing")
             auth.exchangeOidc(
                 request.serverUrl,
                 OidcCallbackRequest(
@@ -163,9 +246,52 @@ class OidcCoordinator(
                 ),
             )
         } finally {
-            pendingStore.clearPendingOidc()
+            clearPendingOidc()
         }
     }
+
+    private suspend fun failAppAuth(exception: AuthorizationException?): Nothing {
+        clearPendingOidc()
+        throw appAuthFailure(exception)
+    }
+
+    private suspend fun failCallback(
+        failure: OidcCallbackFailure,
+        message: String,
+        exception: AuthorizationException,
+    ): Nothing {
+        clearPendingOidc()
+        throw OidcCallbackException(failure = failure, message = message, cause = exception)
+    }
+
+    private suspend fun clearPendingOidc() =
+        withContext(NonCancellable) {
+            pendingStore.clearPendingOidc()
+        }
+
+    private fun appAuthFailure(
+        cause: Throwable?,
+        fallbackMessage: String = "OIDC authorization failed in AppAuth",
+    ): OidcCallbackException {
+        val exception = cause as? AuthorizationException
+        val description = exception?.errorDescription.safeCallbackValue(MAX_ERROR_DESCRIPTION_CHARS)
+        val code = exception?.error.safeCallbackValue(MAX_ERROR_CODE_CHARS)
+        return OidcCallbackException(
+            failure = OidcCallbackFailure.APP_AUTH_ERROR,
+            errorCode = code,
+            errorDescription = description,
+            message = description ?: code ?: fallbackMessage,
+            cause = cause,
+        )
+    }
+
+    private fun oidcConfigurationError(cause: Throwable? = null) =
+        ApiException(
+            statusCode = null,
+            message = "OIDC is disabled or misconfigured in Grimmory",
+            errorCode = "oidc_misconfigured",
+            cause = cause,
+        )
 
     fun close() {
         if (authorizationService.isInitialized()) authorizationService.value.dispose()
@@ -178,7 +304,19 @@ class OidcCoordinator(
         }
     }
 
+    private fun String?.safeCallbackValue(maxChars: Int): String? =
+        this
+            ?.replace(Regex("\\s+"), " ")
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?.take(maxChars)
+
+    private fun AuthorizationException?.matches(template: AuthorizationException): Boolean =
+        this?.type == template.type && this.code == template.code
+
     private companion object {
         const val DEFAULT_SCOPES = "openid profile email groups offline_access"
+        const val MAX_ERROR_CODE_CHARS = 128
+        const val MAX_ERROR_DESCRIPTION_CHARS = 512
     }
 }

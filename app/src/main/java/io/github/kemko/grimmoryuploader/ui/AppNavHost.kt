@@ -44,6 +44,8 @@ import io.github.kemko.grimmoryuploader.data.auth.AuthModeDecision
 import io.github.kemko.grimmoryuploader.data.settings.AuthMode
 import io.github.kemko.grimmoryuploader.di.AppContainer
 import io.github.kemko.grimmoryuploader.share.IncomingIntentParser
+import io.github.kemko.grimmoryuploader.ui.auth.AuthErrorPresentation
+import io.github.kemko.grimmoryuploader.ui.auth.AuthErrorPresenter
 import io.github.kemko.grimmoryuploader.ui.auth.AuthViewModel
 import io.github.kemko.grimmoryuploader.ui.home.HomeViewModel
 import io.github.kemko.grimmoryuploader.ui.incoming.IncomingBookViewModel
@@ -65,7 +67,7 @@ fun AppNavHost(
     launchIntent: Intent? = null,
     requestNotificationPermission: () -> Unit = {},
     launchOidc: (Intent) -> Unit = {},
-    authError: String? = null,
+    authError: AuthErrorPresentation? = null,
     onLaunchIntentConsumed: () -> Unit = {},
     notificationPermissionDenied: Boolean = false,
     awaitStartupReconciliation: suspend () -> Unit = {},
@@ -286,7 +288,7 @@ fun OnboardingScreen(
 @Composable
 fun AuthScreen(
     viewModel: AuthViewModel,
-    error: String?,
+    error: AuthErrorPresentation?,
     modeDecision: AuthModeDecision? = null,
     launchOidc: (Intent) -> Unit,
     onSettings: () -> Unit,
@@ -322,12 +324,17 @@ fun AuthScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
             )
-            message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            message?.let { authError ->
+                Text("Source: ${authError.source.label}", color = MaterialTheme.colorScheme.error)
+                Text(authError.description, color = MaterialTheme.colorScheme.error)
+                Text(authError.action, color = MaterialTheme.colorScheme.error)
+                authError.technicalCode?.let { code -> Text("Code: $code", color = MaterialTheme.colorScheme.error) }
+            }
             if (modeDecision?.mode != AuthMode.OIDC) {
                 Button(onClick = {
                     scope.launch {
                         if (modeDecision?.requiresUserChoice == true) viewModel.selectMode(AuthMode.LOCAL)
-                        viewModel.login(username, password).fold({ onAuthenticated() }, { message = it.message })
+                        viewModel.login(username, password).fold({ onAuthenticated() }, { message = AuthErrorPresenter.present(it) })
                     }
                 }, modifier = Modifier.fillMaxWidth()) { Text("Sign in") }
             }
@@ -335,7 +342,7 @@ fun AuthScreen(
                 OutlinedButton(onClick = {
                     scope.launch {
                         if (modeDecision?.requiresUserChoice == true) viewModel.selectMode(AuthMode.OIDC)
-                        viewModel.startOidc().fold(launchOidc, { message = it.message })
+                        viewModel.startOidc().fold(launchOidc, { message = AuthErrorPresenter.present(it) })
                     }
                 }, modifier = Modifier.fillMaxWidth()) { Text("Sign in with OIDC") }
             }

@@ -16,6 +16,8 @@ import io.github.kemko.grimmoryuploader.data.auth.AesGcmTokenCipher
 import io.github.kemko.grimmoryuploader.data.auth.AuthModeDecision
 import io.github.kemko.grimmoryuploader.data.settings.AuthMode
 import io.github.kemko.grimmoryuploader.di.AppContainer
+import io.github.kemko.grimmoryuploader.ui.auth.AuthErrorPresentation
+import io.github.kemko.grimmoryuploader.ui.auth.AuthErrorSource
 import io.github.kemko.grimmoryuploader.ui.auth.AuthViewModel
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -45,7 +47,12 @@ class AuthScreenTest {
             MaterialTheme {
                 AuthScreen(
                     viewModel = AuthViewModel(container),
-                    error = "OIDC sign-in was cancelled",
+                    error =
+                        AuthErrorPresentation(
+                            source = AuthErrorSource.LOCAL,
+                            description = "OIDC sign-in was cancelled.",
+                            action = "Start sign-in again when ready.",
+                        ),
                     modeDecision = AuthModeDecision(AuthMode.LOCAL),
                     launchOidc = {},
                     onSettings = { settingsOpened = true },
@@ -55,7 +62,9 @@ class AuthScreenTest {
         }
 
         compose.onNodeWithText("Password").assertIsDisplayed()
-        compose.onNodeWithText("OIDC sign-in was cancelled").assertIsDisplayed()
+        compose.onNodeWithText("Source: App").assertIsDisplayed()
+        compose.onNodeWithText("OIDC sign-in was cancelled.").assertIsDisplayed()
+        compose.onNodeWithText("Start sign-in again when ready.").assertIsDisplayed()
         compose.onAllNodesWithText("Sign in").assertCountEquals(2)
         compose.onAllNodesWithText("Sign in with OIDC").assertCountEquals(0)
         compose.onNodeWithText("Settings").performClick()
@@ -71,7 +80,7 @@ class AuthScreenTest {
                 SecretKeySpec(ByteArray(32).also(SecureRandom()::nextBytes), "AES"),
             )
         val container = AppContainer(context, cipher)
-        var error by mutableStateOf<String?>(null)
+        var error by mutableStateOf<AuthErrorPresentation?>(null)
         compose.setContent {
             MaterialTheme {
                 AuthScreen(
@@ -85,9 +94,20 @@ class AuthScreenTest {
             }
         }
 
-        compose.runOnUiThread { error = "OIDC callback failed" }
+        compose.runOnUiThread {
+            error =
+                AuthErrorPresentation(
+                    source = AuthErrorSource.OIDC_PROVIDER,
+                    description = "OIDC callback failed.",
+                    action = "Check the provider configuration and try again.",
+                    technicalCode = "access_denied",
+                )
+        }
 
-        compose.onNodeWithText("OIDC callback failed").assertIsDisplayed()
+        compose.onNodeWithText("Source: OIDC provider").assertIsDisplayed()
+        compose.onNodeWithText("OIDC callback failed.").assertIsDisplayed()
+        compose.onNodeWithText("Check the provider configuration and try again.").assertIsDisplayed()
+        compose.onNodeWithText("Code: access_denied").assertIsDisplayed()
         container.database.close()
     }
 }
